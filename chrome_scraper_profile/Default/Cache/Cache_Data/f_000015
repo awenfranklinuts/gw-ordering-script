@@ -1,0 +1,783 @@
+(self["webpackChunkmaropost_frontend"] = self["webpackChunkmaropost_frontend"] || []).push([[61],{
+
+/***/ 76214
+(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _node_modules_css_loader_dist_runtime_sourceMaps_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(71354);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_sourceMaps_js__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(_node_modules_css_loader_dist_runtime_sourceMaps_js__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(76314);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1__);
+// Imports
+
+
+var ___CSS_LOADER_EXPORT___ = _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1___default()((_node_modules_css_loader_dist_runtime_sourceMaps_js__WEBPACK_IMPORTED_MODULE_0___default()));
+// Module
+___CSS_LOADER_EXPORT___.push([module.id, `.maropost-app .store-card[data-v-5a5c4552]:not(.legacy-app *){cursor:pointer;transition:all .3s ease;position:relative;overflow:visible;min-height:80px}.maropost-app .store-card[data-v-5a5c4552]:not(.legacy-app *):hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.15)!important;border:1px solid #1f89e5!important}.maropost-app .store-card:hover .login-icon[data-v-5a5c4552]:not(.legacy-app *){opacity:1;transform:scale(1.1)}.maropost-app .login-icon-container[data-v-5a5c4552]:not(.legacy-app *){display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px}.maropost-app .login-icon[data-v-5a5c4552]:not(.legacy-app *){opacity:0;transition:all .3s ease;transform:scale(.8)}.maropost-app .grid-view-container[data-v-5a5c4552]:not(.legacy-app *)::-webkit-scrollbar{width:8px}.maropost-app .grid-view-container[data-v-5a5c4552]:not(.legacy-app *)::-webkit-scrollbar-track{background:#f1f1f1;border-radius:4px}.maropost-app .grid-view-container[data-v-5a5c4552]:not(.legacy-app *)::-webkit-scrollbar-thumb{background:#c1c1c1;border-radius:4px}.maropost-app .grid-view-container[data-v-5a5c4552]::-webkit-scrollbar-thumb:not(.legacy-app *):hover{background:#a8a8a8}.maropost-app .table-body-container[data-v-5a5c4552]:not(.legacy-app *)::-webkit-scrollbar{width:8px}.maropost-app .table-body-container[data-v-5a5c4552]:not(.legacy-app *)::-webkit-scrollbar-track{background:#f1f1f1;border-radius:4px}.maropost-app .table-body-container[data-v-5a5c4552]:not(.legacy-app *)::-webkit-scrollbar-thumb{background:#c1c1c1;border-radius:4px}.maropost-app .table-body-container[data-v-5a5c4552]::-webkit-scrollbar-thumb:not(.legacy-app *):hover{background:#a8a8a8}.maropost-app .store-row[data-v-5a5c4552]:not(.legacy-app *){cursor:pointer;transition:background-color .2s ease}.maropost-app .store-row[data-v-5a5c4552]:not(.legacy-app *):hover{background-color:#f5f5f5}.maropost-app[data-v-5a5c4552] :not(.legacy-app *) .v-skeleton-loader{animation:skeleton-loading-5a5c4552 1.5s ease-in-out infinite}@keyframes skeleton-loading-5a5c4552{0%,to{opacity:1}50%{opacity:.4}}.maropost-app .skeleton-card[data-v-5a5c4552]:not(.legacy-app *){pointer-events:none}.maropost-app .position-relative[data-v-5a5c4552]:not(.legacy-app *){position:relative}.maropost-app .flex-truncate[data-v-5a5c4552]:not(.legacy-app *){min-width:0}.maropost-app .view-toggle-container[data-v-5a5c4552]:not(.legacy-app *){position:relative}.maropost-app .store-search-field[data-v-5a5c4552]:not(.legacy-app *){max-width:250px}.maropost-app .grid-view-scrollable[data-v-5a5c4552]:not(.legacy-app *){max-height:365px;overflow-y:auto}.maropost-app .store-name-truncate[data-v-5a5c4552]:not(.legacy-app *){max-width:210px}.maropost-app .list-view-card[data-v-5a5c4552]:not(.legacy-app *){border-radius:8px;overflow:hidden}.maropost-app .table-header-sticky[data-v-5a5c4552]:not(.legacy-app *){position:sticky;top:0;z-index:10;background-color:#fafafa;border-bottom:2px solid #e0e0e0}.maropost-app .table-body-scrollable[data-v-5a5c4552]:not(.legacy-app *){max-height:480px;overflow-y:auto;border-top:1px solid #e0e0e0}.maropost-app .table-col-serial[data-v-5a5c4552]:not(.legacy-app *){width:80px}.maropost-app .table-col-store[data-v-5a5c4552]:not(.legacy-app *){min-width:200px}.maropost-app .table-col-url[data-v-5a5c4552]:not(.legacy-app *){min-width:150px}.maropost-app .table-col-action[data-v-5a5c4552]:not(.legacy-app *){width:120px}.maropost-app .table-cell-serial[data-v-5a5c4552]:not(.legacy-app *){width:80px;font-weight:500;color:#666}.maropost-app .login-button[data-v-5a5c4552]:not(.legacy-app *){text-transform:none;font-weight:500;letter-spacing:.5px}`, "",{"version":3,"sources":["webpack://./src/assets/styles/store-card.css"],"names":[],"mappings":"AAEA,8DACE,cAAe,CACf,uBAAyB,CACzB,iBAAkB,CAClB,gBAAiB,CACjB,eACF,CAEA,oEACE,0BAA2B,CAC3B,+CAAqD,CACrD,kCACF,CAEA,gFACE,SAAU,CACV,oBACF,CAEA,wEACE,YAAa,CACb,kBAAmB,CACnB,sBAAuB,CACvB,cAAe,CACf,eACF,CAEA,8DACE,SAAU,CACV,uBAAyB,CACzB,mBACF,CAGA,0FACE,SACF,CAEA,gGACE,kBAAmB,CACnB,iBACF,CAEA,gGACE,kBAAmB,CACnB,iBACF,CAEA,sGACE,kBACF,CAGA,2FACE,SACF,CAEA,iGACE,kBAAmB,CACnB,iBACF,CAEA,iGACE,kBAAmB,CACnB,iBACF,CAEA,uGACE,kBACF,CAGA,6DACE,cAAe,CACf,oCACF,CAEA,mEACE,wBACF,CAGA,sEACE,6DACF,CAEA,qCACE,MAAW,SAAY,CACvB,IAAM,UAAc,CACtB,CAEA,iEACE,mBACF,CAOA,qEACE,iBACF,CAGA,iEACE,WACF,CAOA,yEACE,iBACF,CAGA,sEACE,eACF,CAGA,wEACE,gBAAiB,CACjB,eACF,CAGA,uEACE,eACF,CAGA,kEACE,iBAAkB,CAClB,eACF,CAGA,uEACE,eAAgB,CAChB,KAAM,CACN,UAAW,CACX,wBAAoC,CACpC,+BACF,CAGA,yEACE,gBAAiB,CACjB,eAAgB,CAChB,4BACF,CAGA,oEACE,UACF,CAEA,mEACE,eACF,CAEA,iEACE,eACF,CAEA,oEACE,WACF,CAGA,qEACE,UAAW,CACX,eAAgB,CAChB,UACF,CAGA,gEACE,mBAAoB,CACpB,eAAgB,CAChB,mBACF","sourcesContent":["\n/* Store Card Hover Effects */\n.store-card {\n  cursor: pointer;\n  transition: all 0.3s ease;\n  position: relative;\n  overflow: visible;\n  min-height: 80px;\n}\n\n.store-card:hover {\n  transform: translateY(-2px);\n  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15) !important;\n  border: 1px solid #1f89e5 !important;\n}\n\n.store-card:hover .login-icon {\n  opacity: 1;\n  transform: scale(1.1);\n}\n\n.login-icon-container {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  min-width: 32px;\n  min-height: 32px;\n}\n\n.login-icon {\n  opacity: 0;\n  transition: all 0.3s ease;\n  transform: scale(0.8);\n}\n\n/* Grid View Scrollbar Styling */\n.grid-view-container::-webkit-scrollbar {\n  width: 8px;\n}\n\n.grid-view-container::-webkit-scrollbar-track {\n  background: #f1f1f1;\n  border-radius: 4px;\n}\n\n.grid-view-container::-webkit-scrollbar-thumb {\n  background: #c1c1c1;\n  border-radius: 4px;\n}\n\n.grid-view-container::-webkit-scrollbar-thumb:hover {\n  background: #a8a8a8;\n}\n\n/* List View Table Body Scrollbar Styling */\n.table-body-container::-webkit-scrollbar {\n  width: 8px;\n}\n\n.table-body-container::-webkit-scrollbar-track {\n  background: #f1f1f1;\n  border-radius: 4px;\n}\n\n.table-body-container::-webkit-scrollbar-thumb {\n  background: #c1c1c1;\n  border-radius: 4px;\n}\n\n.table-body-container::-webkit-scrollbar-thumb:hover {\n  background: #a8a8a8;\n}\n\n/* Store Row Hover Effect */\n.store-row {\n  cursor: pointer;\n  transition: background-color 0.2s ease;\n}\n\n.store-row:hover {\n  background-color: #f5f5f5;\n}\n\n/* Skeleton Loading Animation */\n:deep(.v-skeleton-loader) {\n  animation: skeleton-loading 1.5s ease-in-out infinite;\n}\n\n@keyframes skeleton-loading {\n  0%, 100% { opacity: 1; }\n  50% { opacity: 0.4; }\n}\n\n.skeleton-card {\n  pointer-events: none;\n}\n\n/* ============================================\n   Utility Classes - Reusable across components\n   ============================================ */\n\n/* Position utilities */\n.position-relative {\n  position: relative;\n}\n\n/* Flex truncation helper - allows text truncation in flex containers */\n.flex-truncate {\n  min-width: 0;\n}\n\n/* ============================================\n   Store List Component Styles\n   ============================================ */\n\n/* View Toggle Container */\n.view-toggle-container {\n  position: relative;\n}\n\n/* Search Field */\n.store-search-field {\n  max-width: 250px;\n}\n\n/* Grid View Styles */\n.grid-view-scrollable {\n  max-height: 365px;\n  overflow-y: auto;\n}\n\n/* Store Name Truncation */\n.store-name-truncate {\n  max-width: 210px;\n}\n\n/* List View Card */\n.list-view-card {\n  border-radius: 8px;\n  overflow: hidden;\n}\n\n/* Table Header - Sticky */\n.table-header-sticky {\n  position: sticky;\n  top: 0;\n  z-index: 10;\n  background-color: rgb(250, 250, 250);\n  border-bottom: 2px solid rgb(224, 224, 224);\n}\n\n/* Table Body Container */\n.table-body-scrollable {\n  max-height: 480px;\n  overflow-y: auto;\n  border-top: 1px solid rgb(224, 224, 224);\n}\n\n/* Table Column Widths */\n.table-col-serial {\n  width: 80px;\n}\n\n.table-col-store {\n  min-width: 200px;\n}\n\n.table-col-url {\n  min-width: 150px;\n}\n\n.table-col-action {\n  width: 120px;\n}\n\n/* Table Cell Styles */\n.table-cell-serial {\n  width: 80px;\n  font-weight: 500;\n  color: #666;\n}\n\n/* Login Button Styles */\n.login-button {\n  text-transform: none;\n  font-weight: 500;\n  letter-spacing: 0.5px;\n}"],"sourceRoot":""}]);
+// Exports
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (___CSS_LOADER_EXPORT___);
+
+
+/***/ },
+
+/***/ 33170
+(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   A: () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _node_modules_css_loader_dist_runtime_sourceMaps_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(71354);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_sourceMaps_js__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(_node_modules_css_loader_dist_runtime_sourceMaps_js__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(76314);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1__);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_getUrl_js__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(4417);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_getUrl_js__WEBPACK_IMPORTED_MODULE_2___default = /*#__PURE__*/__webpack_require__.n(_node_modules_css_loader_dist_runtime_getUrl_js__WEBPACK_IMPORTED_MODULE_2__);
+// Imports
+
+
+
+var ___CSS_LOADER_URL_IMPORT_0___ = new URL(/* asset import */ __webpack_require__(91269), __webpack_require__.b);
+var ___CSS_LOADER_EXPORT___ = _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1___default()((_node_modules_css_loader_dist_runtime_sourceMaps_js__WEBPACK_IMPORTED_MODULE_0___default()));
+var ___CSS_LOADER_URL_REPLACEMENT_0___ = _node_modules_css_loader_dist_runtime_getUrl_js__WEBPACK_IMPORTED_MODULE_2___default()(___CSS_LOADER_URL_IMPORT_0___);
+// Module
+___CSS_LOADER_EXPORT___.push([module.id, `.maropost-app .landing-page-theme:not(.legacy-app *){background:linear-gradient(180deg,transparent 60%,#fff),url(${___CSS_LOADER_URL_REPLACEMENT_0___}) no-repeat 50%;background-size:cover;height:100px}`, "",{"version":3,"sources":["webpack://./src/assets/styles/welcome-header.css"],"names":[],"mappings":"AACA,qDACE,6GAEmE,CACnE,qBAAsB,CACtB,YACF","sourcesContent":["/* Welcome Header Background */\n.landing-page-theme {\n  background: \n    linear-gradient(to bottom, transparent 60%, white 100%),\n    url('@/assets/images/welcome-header.svg') no-repeat center center;\n  background-size: cover;\n  height: 100px;\n}\n"],"sourceRoot":""}]);
+// Exports
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (___CSS_LOADER_EXPORT___);
+
+
+/***/ },
+
+/***/ 28574
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+
+// EXPORTS
+__webpack_require__.d(__webpack_exports__, {
+  A: () => (/* binding */ StoreList)
+});
+
+// EXTERNAL MODULE: ./node_modules/@babel/runtime/helpers/esm/toConsumableArray.js + 3 modules
+var toConsumableArray = __webpack_require__(59258);
+// EXTERNAL MODULE: ./node_modules/@babel/runtime/helpers/esm/regenerator.js + 1 modules
+var regenerator = __webpack_require__(20908);
+// EXTERNAL MODULE: ./node_modules/@babel/runtime/helpers/esm/asyncToGenerator.js
+var asyncToGenerator = __webpack_require__(30388);
+// EXTERNAL MODULE: ./node_modules/core-js/modules/es.array.concat.js
+var es_array_concat = __webpack_require__(28706);
+// EXTERNAL MODULE: ./node_modules/core-js/modules/es.array.filter.js
+var es_array_filter = __webpack_require__(2008);
+// EXTERNAL MODULE: ./node_modules/core-js/modules/es.array.from.js
+var es_array_from = __webpack_require__(23418);
+// EXTERNAL MODULE: ./node_modules/core-js/modules/es.array.includes.js
+var es_array_includes = __webpack_require__(74423);
+// EXTERNAL MODULE: ./node_modules/core-js/modules/es.function.name.js
+var es_function_name = __webpack_require__(62010);
+// EXTERNAL MODULE: ./node_modules/core-js/modules/es.iterator.constructor.js
+var es_iterator_constructor = __webpack_require__(18111);
+// EXTERNAL MODULE: ./node_modules/core-js/modules/es.iterator.filter.js
+var es_iterator_filter = __webpack_require__(22489);
+// EXTERNAL MODULE: ./node_modules/core-js/modules/es.object.to-string.js
+var es_object_to_string = __webpack_require__(26099);
+// EXTERNAL MODULE: ./node_modules/core-js/modules/es.string.includes.js
+var es_string_includes = __webpack_require__(21699);
+// EXTERNAL MODULE: ./node_modules/core-js/modules/es.string.iterator.js
+var es_string_iterator = __webpack_require__(47764);
+// EXTERNAL MODULE: ./node_modules/core-js/modules/es.string.starts-with.js
+var es_string_starts_with = __webpack_require__(11392);
+// EXTERNAL MODULE: ./node_modules/core-js/modules/es.string.trim.js
+var es_string_trim = __webpack_require__(42762);
+// EXTERNAL MODULE: ./node_modules/@vue/runtime-core/dist/runtime-core.esm-bundler.js
+var runtime_core_esm_bundler = __webpack_require__(20641);
+// EXTERNAL MODULE: ./node_modules/@vue/shared/dist/shared.esm-bundler.js
+var shared_esm_bundler = __webpack_require__(90033);
+// EXTERNAL MODULE: ./node_modules/@vue/reactivity/dist/reactivity.esm-bundler.js
+var reactivity_esm_bundler = __webpack_require__(50953);
+// EXTERNAL MODULE: ./node_modules/@vue/runtime-dom/dist/runtime-dom.esm-bundler.js
+var runtime_dom_esm_bundler = __webpack_require__(53751);
+// EXTERNAL MODULE: ./node_modules/@maropost-ui/liquidsky-ui/dist/index.js + 22 modules
+var dist = __webpack_require__(83454);
+;// ./node_modules/thread-loader/dist/cjs.js!./node_modules/babel-loader/lib/index.js!./node_modules/ts-loader/index.js??clonedRuleSet-41.use[2]!./node_modules/vue-loader/dist/index.js??ruleSet[0].use[0]!./src/modules/Dashboards/components/StoreList.vue?vue&type=script&setup=true&lang=ts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+var _hoisted_1 = {
+  "class": "font-weight-bold"
+};
+var _hoisted_2 = {
+  "class": "view-toggle-container"
+};
+var _hoisted_3 = {
+  "class": "flex-grow-1"
+};
+var _hoisted_4 = {
+  "class": "text-white text-h6 font-weight-medium text-uppercase"
+};
+var _hoisted_5 = {
+  "class": "ml-3 flex-grow-1 flex-truncate"
+};
+var _hoisted_6 = {
+  "class": "d-flex flex-column"
+};
+var _hoisted_7 = {
+  key: 1,
+  "class": "d-block text-subtitle-1 font-weight-medium text-truncate store-name-truncate"
+};
+var _hoisted_8 = {
+  "class": "ml-3 login-icon-container"
+};
+var _hoisted_9 = {
+  key: 0,
+  "class": "text-grey"
+};
+var _hoisted_10 = {
+  "class": "table-header-sticky"
+};
+var _hoisted_11 = {
+  "class": "text-left table-col-url"
+};
+var _hoisted_12 = {
+  "class": "table-body-scrollable"
+};
+var _hoisted_13 = {
+  "class": "table-col-serial"
+};
+var _hoisted_14 = {
+  "class": "table-col-store"
+};
+var _hoisted_15 = {
+  "class": "d-flex align-center"
+};
+var _hoisted_16 = {
+  "class": "table-col-url"
+};
+var _hoisted_17 = {
+  "class": "text-center table-col-action"
+};
+var _hoisted_18 = {
+  "class": "table-header-sticky"
+};
+var _hoisted_19 = {
+  "class": "text-left table-col-url"
+};
+var _hoisted_20 = {
+  "class": "table-body-container table-body-scrollable"
+};
+var _hoisted_21 = ["onClick"];
+var _hoisted_22 = {
+  "class": "table-cell-serial"
+};
+var _hoisted_23 = {
+  "class": "table-col-store"
+};
+var _hoisted_24 = {
+  "class": "d-flex align-center"
+};
+var _hoisted_25 = {
+  "class": "text-white text-subtitle-2 font-weight-medium text-uppercase"
+};
+var _hoisted_26 = {
+  "class": "text-subtitle-1 font-weight-medium"
+};
+var _hoisted_27 = {
+  "class": "table-col-url"
+};
+var _hoisted_28 = {
+  "class": "text-body-2 text-grey"
+};
+var _hoisted_29 = {
+  "class": "text-center table-col-action"
+};
+var _hoisted_30 = {
+  key: 2,
+  "class": "text-center py-8"
+};
+var _hoisted_31 = {
+  key: 0,
+  "class": "text-grey"
+};
+
+
+// --------------------------------------------------
+// Props
+// --------------------------------------------------
+var SKELETON_COUNT = 8;
+var GRID_THRESHOLD = 12;
+// --------------------------------------------------
+// State
+// --------------------------------------------------
+/* harmony default export */ const StoreListvue_type_script_setup_true_lang_ts = (/*@__PURE__*/(0,runtime_core_esm_bundler/* defineComponent */.pM)({
+  __name: 'StoreList',
+  props: {
+    fetchStores: {},
+    transformStoreUrl: {
+      type: Function,
+      "default": function _default(store) {
+        var url = store.url || '';
+        return url.startsWith('http') ? url : "https://".concat(url);
+      }
+    },
+    getStoreName: {
+      type: Function,
+      "default": function _default(store) {
+        return store.name || '';
+      }
+    },
+    getStoreUrl: {
+      type: Function,
+      "default": function _default(store) {
+        return store.url || '';
+      }
+    },
+    getStoreKey: {
+      type: Function,
+      "default": function _default(store) {
+        return store.id || store.name || '';
+      }
+    },
+    showUrlColumnInList: {
+      type: Boolean,
+      "default": true
+    },
+    showUrlInGrid: {
+      type: Boolean,
+      "default": true
+    }
+  },
+  setup: function setup(__props) {
+    var props = __props;
+    // --------------------------------------------------
+    // Constants
+    // --------------------------------------------------
+    var VIEW_MODES = {
+      GRID: 0,
+      LIST: 1
+    };
+    var viewMode = (0,reactivity_esm_bundler/* ref */.KR)(0);
+    var searchStore = (0,reactivity_esm_bundler/* ref */.KR)('');
+    var isLoading = (0,reactivity_esm_bundler/* ref */.KR)(false);
+    var stores = (0,reactivity_esm_bundler/* ref */.KR)([]);
+    // --------------------------------------------------
+    // Computed
+    // --------------------------------------------------
+    var searchTerm = (0,runtime_core_esm_bundler/* computed */.EW)(function () {
+      var _searchStore$value;
+      return ((_searchStore$value = searchStore.value) === null || _searchStore$value === void 0 ? void 0 : _searchStore$value.toLowerCase().trim()) || '';
+    });
+    var filteredStores = (0,runtime_core_esm_bundler/* computed */.EW)(function () {
+      if (!searchTerm.value) {
+        return stores.value;
+      }
+      return stores.value.filter(function (store) {
+        var name = props.getStoreName(store).toLowerCase();
+        var url = props.getStoreUrl(store).toLowerCase();
+        return name.includes(searchTerm.value) || url.includes(searchTerm.value);
+      });
+    });
+    var currentViewMode = (0,runtime_core_esm_bundler/* computed */.EW)(function () {
+      var manualMode = viewMode.value;
+      var hasManualMode = manualMode !== null;
+      var autoMode = filteredStores.value.length <= GRID_THRESHOLD ? VIEW_MODES.GRID : VIEW_MODES.LIST;
+      return hasManualMode ? manualMode : autoMode;
+    });
+    var isGridView = (0,runtime_core_esm_bundler/* computed */.EW)(function () {
+      return currentViewMode.value === VIEW_MODES.GRID;
+    });
+    var hasStores = (0,runtime_core_esm_bundler/* computed */.EW)(function () {
+      return filteredStores.value.length > 0;
+    });
+    // --------------------------------------------------
+    // Methods
+    // --------------------------------------------------
+    var getStoreColor = function getStoreColor(storeName) {
+      if (!storeName) return 'grey';
+      var hash = 0;
+      for (var i = 0; i < storeName.length; i++) {
+        hash = storeName.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      var hue = Math.abs(hash) % 360;
+      var saturation = 70 + Math.abs(hash) % 20;
+      var lightness = 35 + Math.abs(hash) % 15;
+      return "hsl(".concat(hue, ", ").concat(saturation, "%, ").concat(lightness, "%)");
+    };
+    var handleStoreClick = function handleStoreClick(store) {
+      var transformedUrl = props.transformStoreUrl(store);
+      if (transformedUrl) {
+        window.open(transformedUrl, '_blank', 'noopener,noreferrer');
+      }
+    };
+    var onViewModeChange = function onViewModeChange(mode) {
+      viewMode.value = mode;
+    };
+    var generateSkeletonItems = function generateSkeletonItems() {
+      var count = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : SKELETON_COUNT;
+      return Array.from({
+        length: count
+      }, function (_, index) {
+        return index;
+      });
+    };
+    var loadStores = /*#__PURE__*/function () {
+      var _ref = (0,asyncToGenerator/* default */.A)(/*#__PURE__*/(0,regenerator/* default */.A)().m(function _callee() {
+        var fetchedStores, _t;
+        return (0,regenerator/* default */.A)().w(function (_context) {
+          while (1) switch (_context.p = _context.n) {
+            case 0:
+              _context.p = 0;
+              isLoading.value = true;
+              _context.n = 1;
+              return props.fetchStores();
+            case 1:
+              fetchedStores = _context.v;
+              stores.value = fetchedStores || [];
+              _context.n = 3;
+              break;
+            case 2:
+              _context.p = 2;
+              _t = _context.v;
+              console.error('Error fetching stores:', _t);
+              stores.value = [];
+            case 3:
+              _context.p = 3;
+              isLoading.value = false;
+              return _context.f(3);
+            case 4:
+              return _context.a(2);
+          }
+        }, _callee, null, [[0, 2, 3, 4]]);
+      }));
+      return function loadStores() {
+        return _ref.apply(this, arguments);
+      };
+    }();
+    // --------------------------------------------------
+    // Lifecycle
+    // --------------------------------------------------
+    (0,runtime_core_esm_bundler/* onMounted */.sV)(function () {
+      loadStores();
+    });
+    return function (_ctx, _cache) {
+      var _component_v_spacer = (0,runtime_core_esm_bundler/* resolveComponent */.g2)("v-spacer");
+      var _component_v_icon = (0,runtime_core_esm_bundler/* resolveComponent */.g2)("v-icon");
+      var _component_v_btn = (0,runtime_core_esm_bundler/* resolveComponent */.g2)("v-btn");
+      var _component_v_btn_toggle = (0,runtime_core_esm_bundler/* resolveComponent */.g2)("v-btn-toggle");
+      var _component_v_text_field = (0,runtime_core_esm_bundler/* resolveComponent */.g2)("v-text-field");
+      var _component_v_sheet = (0,runtime_core_esm_bundler/* resolveComponent */.g2)("v-sheet");
+      var _component_v_skeleton_loader = (0,runtime_core_esm_bundler/* resolveComponent */.g2)("v-skeleton-loader");
+      var _component_v_card = (0,runtime_core_esm_bundler/* resolveComponent */.g2)("v-card");
+      var _component_v_col = (0,runtime_core_esm_bundler/* resolveComponent */.g2)("v-col");
+      var _component_v_avatar = (0,runtime_core_esm_bundler/* resolveComponent */.g2)("v-avatar");
+      var _component_v_row = (0,runtime_core_esm_bundler/* resolveComponent */.g2)("v-row");
+      var _component_v_table = (0,runtime_core_esm_bundler/* resolveComponent */.g2)("v-table");
+      var _component_v_container = (0,runtime_core_esm_bundler/* resolveComponent */.g2)("v-container");
+      return (0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createBlock */.Wv)(_component_v_container, {
+        fluid: "",
+        "class": "pa-0"
+      }, {
+        "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+          return [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_sheet, {
+            "class": (0,shared_esm_bundler/* normalizeClass */.C4)(["d-flex align-center flex-wrap px-8 mb-1", {
+              'mb-8': filteredStores.value.length > 12
+            }])
+          }, {
+            "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+              var _filteredStores$value;
+              return [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("h4", _hoisted_1, "Select store to login (" + (0,shared_esm_bundler/* toDisplayString */.v_)((_filteredStores$value = filteredStores.value) === null || _filteredStores$value === void 0 ? void 0 : _filteredStores$value.length) + ")", 1), (0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_spacer), (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("div", _hoisted_2, [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_btn_toggle, {
+                "class": "mr-4 pa-1 text-no-wrap",
+                mandatory: "",
+                color: "primary",
+                variant: "outlined",
+                "model-value": currentViewMode.value,
+                "onUpdate:modelValue": onViewModeChange
+              }, {
+                "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                  return [(0,runtime_core_esm_bundler/* createVNode */.bF)((0,reactivity_esm_bundler/* unref */.R1)(dist/* AppTooltip */.tBU), {
+                    location: "bottom",
+                    attach: "",
+                    text: "Grid View"
+                  }, {
+                    activator: (0,runtime_core_esm_bundler/* withCtx */.k6)(function (_ref2) {
+                      var props = _ref2.props;
+                      return [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_btn, (0,runtime_core_esm_bundler/* mergeProps */.v6)(props, {
+                        variant: "outlined",
+                        icon: true
+                      }), {
+                        "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                          return [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_icon, {
+                            color: "primary"
+                          }, {
+                            "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                              return (0,toConsumableArray/* default */.A)(_cache[1] || (_cache[1] = [(0,runtime_core_esm_bundler/* createTextVNode */.eW)("mdi-view-grid", -1)]));
+                            }),
+                            _: 1
+                          })];
+                        }),
+                        _: 1
+                      }, 16)];
+                    }),
+                    _: 1
+                  }), (0,runtime_core_esm_bundler/* createVNode */.bF)((0,reactivity_esm_bundler/* unref */.R1)(dist/* AppTooltip */.tBU), {
+                    location: "bottom",
+                    attach: "",
+                    text: "List View"
+                  }, {
+                    activator: (0,runtime_core_esm_bundler/* withCtx */.k6)(function (_ref3) {
+                      var props = _ref3.props;
+                      return [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_btn, (0,runtime_core_esm_bundler/* mergeProps */.v6)(props, {
+                        variant: "outlined",
+                        "class": "border rounded-e",
+                        icon: true
+                      }), {
+                        "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                          return [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_icon, null, {
+                            "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                              return (0,toConsumableArray/* default */.A)(_cache[2] || (_cache[2] = [(0,runtime_core_esm_bundler/* createTextVNode */.eW)("mdi-view-headline", -1)]));
+                            }),
+                            _: 1
+                          })];
+                        }),
+                        _: 1
+                      }, 16)];
+                    }),
+                    _: 1
+                  })];
+                }),
+                _: 1
+              }, 8, ["model-value"])]), (0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_text_field, {
+                modelValue: searchStore.value,
+                "onUpdate:modelValue": _cache[0] || (_cache[0] = function ($event) {
+                  return searchStore.value = $event;
+                }),
+                placeholder: "Search",
+                variant: "outlined",
+                density: "compact",
+                clearable: "",
+                "class": "store-search-field",
+                "hide-details": "",
+                "prepend-inner-icon": "mdi-magnify"
+              }, null, 8, ["modelValue"])];
+            }),
+            _: 1
+          }, 8, ["class"]), (0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_container, {
+            "class": "px-8 mb-12 pt-1",
+            fluid: ""
+          }, {
+            "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+              return [isGridView.value ? ((0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createBlock */.Wv)(_component_v_row, {
+                key: 0,
+                "class": (0,shared_esm_bundler/* normalizeClass */.C4)(["pt-2", ['grid-view-container', {
+                  'grid-view-scrollable': filteredStores.value.length > GRID_THRESHOLD
+                }]])
+              }, {
+                "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                  return [isLoading.value ? ((0,runtime_core_esm_bundler/* openBlock */.uX)(true), (0,runtime_core_esm_bundler/* createElementBlock */.CE)(runtime_core_esm_bundler/* Fragment */.FK, {
+                    key: 0
+                  }, (0,runtime_core_esm_bundler/* renderList */.pI)(generateSkeletonItems(), function (n) {
+                    return (0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createBlock */.Wv)(_component_v_col, {
+                      cols: "6",
+                      md: "4",
+                      lg: "3",
+                      key: "skeleton-".concat(n)
+                    }, {
+                      "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                        return [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_card, {
+                          "class": "skeleton-card d-flex align-center pa-3",
+                          variant: "outlined",
+                          elevation: 2
+                        }, {
+                          "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                            return [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_skeleton_loader, {
+                              type: "avatar",
+                              "class": "mr-4",
+                              width: "48",
+                              height: "48"
+                            }), (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("div", _hoisted_3, [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_skeleton_loader, {
+                              type: "text",
+                              "class": "mb-2",
+                              width: "120"
+                            }), __props.showUrlInGrid ? ((0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createBlock */.Wv)(_component_v_skeleton_loader, {
+                              key: 0,
+                              type: "text",
+                              width: "80"
+                            })) : (0,runtime_core_esm_bundler/* createCommentVNode */.Q3)("", true)]), (0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_skeleton_loader, {
+                              type: "button",
+                              width: "40",
+                              height: "40"
+                            })];
+                          }),
+                          _: 1
+                        })];
+                      }),
+                      _: 1
+                    });
+                  }), 128)) : hasStores.value ? ((0,runtime_core_esm_bundler/* openBlock */.uX)(true), (0,runtime_core_esm_bundler/* createElementBlock */.CE)(runtime_core_esm_bundler/* Fragment */.FK, {
+                    key: 1
+                  }, (0,runtime_core_esm_bundler/* renderList */.pI)(filteredStores.value, function (store) {
+                    return (0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createBlock */.Wv)(_component_v_col, {
+                      cols: "6",
+                      md: "4",
+                      lg: "3",
+                      key: __props.getStoreKey(store)
+                    }, {
+                      "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                        return [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_card, {
+                          "class": "store-card d-flex align-center pa-3 border-0",
+                          variant: "outlined",
+                          elevation: 2,
+                          hover: "",
+                          onClick: function onClick($event) {
+                            return handleStoreClick(store);
+                          }
+                        }, {
+                          "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                            return [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_avatar, {
+                              rounded: "",
+                              color: getStoreColor(__props.getStoreName(store)),
+                              size: "48"
+                            }, {
+                              "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                                return [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("span", _hoisted_4, (0,shared_esm_bundler/* toDisplayString */.v_)(__props.getStoreName(store).charAt(0)), 1)];
+                              }),
+                              _: 2
+                            }, 1032, ["color"]), (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("div", _hoisted_5, [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("div", _hoisted_6, [!__props.showUrlInGrid ? ((0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createBlock */.Wv)((0,reactivity_esm_bundler/* unref */.R1)(dist/* AppTooltip */.tBU), {
+                              key: 0,
+                              location: "top",
+                              attach: "",
+                              text: __props.getStoreName(store),
+                              "text-class": "d-block text-subtitle-1 font-weight-medium text-truncate"
+                            }, null, 8, ["text"])) : ((0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createElementBlock */.CE)("span", _hoisted_7, (0,shared_esm_bundler/* toDisplayString */.v_)(__props.getStoreName(store)), 1)), __props.showUrlInGrid && __props.getStoreUrl(store) ? ((0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createBlock */.Wv)((0,reactivity_esm_bundler/* unref */.R1)(dist/* AppTooltip */.tBU), {
+                              key: 2,
+                              location: "top",
+                              attach: "",
+                              text: __props.getStoreUrl(store),
+                              "text-class": "d-block text-body-2 text-grey text-truncate"
+                            }, null, 8, ["text"])) : (0,runtime_core_esm_bundler/* createCommentVNode */.Q3)("", true)])]), (0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_spacer), (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("div", _hoisted_8, [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_icon, {
+                              "class": "login-icon",
+                              color: "primary",
+                              size: "20"
+                            }, {
+                              "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                                return (0,toConsumableArray/* default */.A)(_cache[3] || (_cache[3] = [(0,runtime_core_esm_bundler/* createTextVNode */.eW)(" mdi-login ", -1)]));
+                              }),
+                              _: 1
+                            })])];
+                          }),
+                          _: 2
+                        }, 1032, ["onClick"])];
+                      }),
+                      _: 2
+                    }, 1024);
+                  }), 128)) : ((0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createBlock */.Wv)(_component_v_col, {
+                    key: 2,
+                    cols: "12",
+                    "class": "text-center py-8"
+                  }, {
+                    "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                      return [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_icon, {
+                        size: "64",
+                        color: "grey-lighten-1"
+                      }, {
+                        "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                          return (0,toConsumableArray/* default */.A)(_cache[4] || (_cache[4] = [(0,runtime_core_esm_bundler/* createTextVNode */.eW)("mdi-magnify", -1)]));
+                        }),
+                        _: 1
+                      }), _cache[5] || (_cache[5] = (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("h3", {
+                        "class": "text-grey-lighten-1 mt-4"
+                      }, "No store found", -1)), stores.value.length !== 0 ? ((0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createElementBlock */.CE)("p", _hoisted_9, "Try adjusting your search terms")) : (0,runtime_core_esm_bundler/* createCommentVNode */.Q3)("", true)];
+                    }),
+                    _: 1
+                  }))];
+                }),
+                _: 1
+              }, 8, ["class"])) : ((0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createBlock */.Wv)(_component_v_card, {
+                key: 1,
+                "class": "mt-6 border-0 list-view-card",
+                variant: "outlined",
+                elevation: 2
+              }, {
+                "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                  return [isLoading.value ? ((0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createElementBlock */.CE)(runtime_core_esm_bundler/* Fragment */.FK, {
+                    key: 0
+                  }, [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_table, null, {
+                    "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                      return [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("thead", _hoisted_10, [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("tr", null, [_cache[6] || (_cache[6] = (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("th", {
+                        "class": "text-left table-col-serial"
+                      }, "Sn.", -1)), _cache[7] || (_cache[7] = (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("th", {
+                        "class": "text-left table-col-store"
+                      }, "Stores", -1)), (0,runtime_core_esm_bundler/* withDirectives */.bo)((0,runtime_core_esm_bundler/* createElementVNode */.Lk)("th", _hoisted_11, "URL", 512), [[runtime_dom_esm_bundler/* vShow */.aG, __props.showUrlColumnInList]]), _cache[8] || (_cache[8] = (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("th", {
+                        "class": "text-center table-col-action"
+                      }, null, -1))])])];
+                    }),
+                    _: 1
+                  }), (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("div", _hoisted_12, [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_table, null, {
+                    "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                      return [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("tbody", null, [((0,runtime_core_esm_bundler/* openBlock */.uX)(true), (0,runtime_core_esm_bundler/* createElementBlock */.CE)(runtime_core_esm_bundler/* Fragment */.FK, null, (0,runtime_core_esm_bundler/* renderList */.pI)(generateSkeletonItems(), function (n) {
+                        return (0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createElementBlock */.CE)("tr", {
+                          key: "skeleton-row-".concat(n)
+                        }, [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("td", _hoisted_13, [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_skeleton_loader, {
+                          type: "text",
+                          width: "20"
+                        })]), (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("td", _hoisted_14, [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("div", _hoisted_15, [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_skeleton_loader, {
+                          type: "avatar",
+                          "class": "mr-3",
+                          width: "40",
+                          height: "40"
+                        }), (0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_skeleton_loader, {
+                          type: "text",
+                          width: "120"
+                        })])]), (0,runtime_core_esm_bundler/* withDirectives */.bo)((0,runtime_core_esm_bundler/* createElementVNode */.Lk)("td", _hoisted_16, [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_skeleton_loader, {
+                          type: "text",
+                          width: "100"
+                        })], 512), [[runtime_dom_esm_bundler/* vShow */.aG, __props.showUrlColumnInList]]), (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("td", _hoisted_17, [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_skeleton_loader, {
+                          type: "button",
+                          width: "80",
+                          height: "32"
+                        })])]);
+                      }), 128))])];
+                    }),
+                    _: 1
+                  })])], 64)) : hasStores.value ? ((0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createElementBlock */.CE)(runtime_core_esm_bundler/* Fragment */.FK, {
+                    key: 1
+                  }, [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_table, null, {
+                    "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                      return [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("thead", _hoisted_18, [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("tr", null, [_cache[9] || (_cache[9] = (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("th", {
+                        "class": "text-left table-col-serial"
+                      }, "Sn.", -1)), _cache[10] || (_cache[10] = (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("th", {
+                        "class": "text-left table-col-store"
+                      }, "Stores", -1)), (0,runtime_core_esm_bundler/* withDirectives */.bo)((0,runtime_core_esm_bundler/* createElementVNode */.Lk)("th", _hoisted_19, "URL", 512), [[runtime_dom_esm_bundler/* vShow */.aG, __props.showUrlColumnInList]]), _cache[11] || (_cache[11] = (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("th", {
+                        "class": "text-center table-col-action"
+                      }, null, -1))])])];
+                    }),
+                    _: 1
+                  }), (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("div", _hoisted_20, [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_table, null, {
+                    "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                      return [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("tbody", null, [((0,runtime_core_esm_bundler/* openBlock */.uX)(true), (0,runtime_core_esm_bundler/* createElementBlock */.CE)(runtime_core_esm_bundler/* Fragment */.FK, null, (0,runtime_core_esm_bundler/* renderList */.pI)(filteredStores.value, function (store, index) {
+                        return (0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createElementBlock */.CE)("tr", {
+                          key: __props.getStoreKey(store),
+                          "class": "store-row",
+                          onClick: function onClick($event) {
+                            return handleStoreClick(store);
+                          }
+                        }, [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("td", _hoisted_22, (0,shared_esm_bundler/* toDisplayString */.v_)(index + 1) + ".", 1), (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("td", _hoisted_23, [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("div", _hoisted_24, [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_avatar, {
+                          rounded: "",
+                          color: getStoreColor(__props.getStoreName(store)),
+                          size: "40",
+                          "class": "mr-3"
+                        }, {
+                          "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                            return [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("span", _hoisted_25, (0,shared_esm_bundler/* toDisplayString */.v_)(__props.getStoreName(store).charAt(0)), 1)];
+                          }),
+                          _: 2
+                        }, 1032, ["color"]), (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("span", _hoisted_26, (0,shared_esm_bundler/* toDisplayString */.v_)(__props.getStoreName(store)), 1)])]), (0,runtime_core_esm_bundler/* withDirectives */.bo)((0,runtime_core_esm_bundler/* createElementVNode */.Lk)("td", _hoisted_27, [(0,runtime_core_esm_bundler/* createElementVNode */.Lk)("span", _hoisted_28, (0,shared_esm_bundler/* toDisplayString */.v_)(__props.getStoreUrl(store)), 1)], 512), [[runtime_dom_esm_bundler/* vShow */.aG, __props.showUrlColumnInList]]), (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("td", _hoisted_29, [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_btn, {
+                          color: "primary",
+                          size: "small",
+                          "class": "login-button",
+                          onClick: (0,runtime_dom_esm_bundler/* withModifiers */.D$)(function ($event) {
+                            return handleStoreClick(store);
+                          }, ["stop"])
+                        }, {
+                          "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                            return [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_icon, {
+                              start: "",
+                              size: "small"
+                            }, {
+                              "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                                return (0,toConsumableArray/* default */.A)(_cache[12] || (_cache[12] = [(0,runtime_core_esm_bundler/* createTextVNode */.eW)("mdi-open-in-new", -1)]));
+                              }),
+                              _: 1
+                            }), _cache[13] || (_cache[13] = (0,runtime_core_esm_bundler/* createTextVNode */.eW)(" LOGIN ", -1))];
+                          }),
+                          _: 1
+                        }, 8, ["onClick"])])], 8, _hoisted_21);
+                      }), 128))])];
+                    }),
+                    _: 1
+                  })])], 64)) : ((0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createElementBlock */.CE)("div", _hoisted_30, [(0,runtime_core_esm_bundler/* createVNode */.bF)(_component_v_icon, {
+                    size: "64",
+                    color: "grey-lighten-1"
+                  }, {
+                    "default": (0,runtime_core_esm_bundler/* withCtx */.k6)(function () {
+                      return (0,toConsumableArray/* default */.A)(_cache[14] || (_cache[14] = [(0,runtime_core_esm_bundler/* createTextVNode */.eW)("mdi-magnify", -1)]));
+                    }),
+                    _: 1
+                  }), _cache[15] || (_cache[15] = (0,runtime_core_esm_bundler/* createElementVNode */.Lk)("h3", {
+                    "class": "text-grey-lighten-1 mt-4"
+                  }, "No store found", -1)), stores.value.length !== 0 ? ((0,runtime_core_esm_bundler/* openBlock */.uX)(), (0,runtime_core_esm_bundler/* createElementBlock */.CE)("p", _hoisted_31, "Try adjusting your search terms")) : (0,runtime_core_esm_bundler/* createCommentVNode */.Q3)("", true)]))];
+                }),
+                _: 1
+              }))];
+            }),
+            _: 1
+          }), (0,runtime_core_esm_bundler/* renderSlot */.RG)(_ctx.$slots, "footer")];
+        }),
+        _: 3
+      });
+    };
+  }
+}));
+;// ./src/modules/Dashboards/components/StoreList.vue?vue&type=script&setup=true&lang=ts
+ 
+// EXTERNAL MODULE: ./node_modules/vue-style-loader/index.js??clonedRuleSet-12.use[0]!./node_modules/css-loader/dist/cjs.js??clonedRuleSet-12.use[1]!./node_modules/vue-loader/dist/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-12.use[2]!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-12.use[3]!./src/assets/styles/store-card.css?vue&type=style&index=0&id=5a5c4552&scoped=true&lang=css&external
+var store_cardvue_type_style_index_0_id_5a5c4552_scoped_true_lang_css_external = __webpack_require__(98901);
+;// ./src/assets/styles/store-card.css?vue&type=style&index=0&id=5a5c4552&scoped=true&lang=css&external
+
+// EXTERNAL MODULE: ./node_modules/vue-loader/dist/exportHelper.js
+var exportHelper = __webpack_require__(66262);
+;// ./src/modules/Dashboards/components/StoreList.vue
+
+
+
+;
+
+
+const __exports__ = /*#__PURE__*/(0,exportHelper/* default */.A)(StoreListvue_type_script_setup_true_lang_ts, [['__scopeId',"data-v-5a5c4552"]])
+
+/* harmony default export */ const StoreList = (__exports__);
+
+/***/ },
+
+/***/ 98901
+(module, __unused_webpack_exports, __webpack_require__) {
+
+// style-loader: Adds some css to the DOM by adding a <style> tag
+
+// load the styles
+var content = __webpack_require__(76214);
+if(content.__esModule) content = content.default;
+if(typeof content === 'string') content = [[module.id, content, '']];
+if(content.locals) module.exports = content.locals;
+// add the styles to the DOM
+var add = (__webpack_require__(99548)/* ["default"] */ .A)
+var update = add("6b22555a", content, true, {"sourceMap":true,"shadowMode":false});
+
+/***/ },
+
+/***/ 91269
+(module, __unused_webpack_exports, __webpack_require__) {
+
+"use strict";
+module.exports = __webpack_require__.p + "img/welcome-header.301ac4b5.svg";
+
+/***/ }
+
+}]);
+//# sourceMappingURL=61.c49ae6d2.js.map
