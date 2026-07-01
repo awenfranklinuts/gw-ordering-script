@@ -10,8 +10,43 @@ from urllib.parse import quote
 import json
 import os
 import re
+import sys
+import time
 
 SCRAPER_PROFILE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chrome_scraper_profile")
+
+LOGIN_WAIT_TIMEOUT = 300  # seconds to wait for the user to log in before giving up
+LOGIN_POLL_INTERVAL = 3
+
+
+def _looks_like_login_page(driver):
+    url = driver.current_url.lower()
+    return "identity.maropost.com" in url or "/cpanel/login" in url
+
+
+def ensure_logged_in(driver, sales_url):
+    """Detect whether the scraper profile is actually logged in to Neto. If the sales
+    orders page redirected to the Maropost login screen, pause here and wait for the
+    user to log in in the visible browser window, polling until it succeeds or times out.
+    """
+    if not _looks_like_login_page(driver):
+        return
+
+    print("Not logged in to Neto yet.")
+    print("Please log in using the Chrome window that just opened — waiting for you to finish...")
+
+    waited = 0
+    while waited < LOGIN_WAIT_TIMEOUT:
+        time.sleep(LOGIN_POLL_INTERVAL)
+        waited += LOGIN_POLL_INTERVAL
+        if not _looks_like_login_page(driver):
+            print("Login detected — continuing.")
+            driver.get(sales_url)
+            WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+            return
+        print(f"Still waiting for login... ({waited}s elapsed)")
+
+    raise RuntimeError("Timed out waiting for login. Please log in and click Fetch Stock from Neto again.")
 
 
 def get_last_tuesday():
@@ -142,6 +177,8 @@ def main():
     driver.get(sales_url)
     WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
 
+    ensure_logged_in(driver, sales_url)
+
     if "app.maropost.com" in driver.current_url:
         print("Redirected to Maropost dashboard, navigating back...")
         driver.get(sales_url)
@@ -204,4 +241,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except RuntimeError as e:
+        print(f"Error: {e}")
+        sys.exit(1)

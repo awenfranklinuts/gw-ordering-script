@@ -503,6 +503,7 @@ class GWOrderTool:
 
     def _run_neto_scraper(self):
         script_path = os.path.join(self.script_dir, "neto_scraper.py")
+        login_prompt_shown = False
         try:
             process = subprocess.Popen(
                 [sys.executable, script_path],
@@ -515,16 +516,30 @@ class GWOrderTool:
 
             output = []
             for line in process.stdout:
-                output.append(line.strip())
-                display = line.strip()
-                self.root.after(0, lambda d=display: self.status_var.set(d))
+                stripped = line.strip()
+                output.append(stripped)
+                self.root.after(0, lambda d=stripped: self.status_var.set(d))
+
+                if not login_prompt_shown and stripped.startswith("Not logged in to Neto"):
+                    login_prompt_shown = True
+                    self.root.after(0, lambda: messagebox.showinfo(
+                        "Login Required",
+                        "You're not logged in to Neto yet.\n\n"
+                        "A Chrome window has opened — please log in there. This will "
+                        "continue automatically once it detects you're logged in.",
+                    ))
 
             process.wait()
 
             if process.returncode == 0:
                 self.root.after(0, lambda: self.status_var.set("Neto scraper finished."))
             else:
+                last_line = next((l for l in reversed(output) if l), "")
                 self.root.after(0, lambda: self.status_var.set(f"Scraper exited with error (code {process.returncode})"))
+                self.root.after(0, lambda msg=last_line, code=process.returncode: messagebox.showerror(
+                    "Neto Scraper Failed",
+                    msg or f"Scraper exited with error (code {code}).",
+                ))
 
         except Exception as e:
             self.root.after(0, lambda: self.status_var.set(f"Error: {e}"))
