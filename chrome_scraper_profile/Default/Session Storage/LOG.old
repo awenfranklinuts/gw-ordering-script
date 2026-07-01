@@ -1,3 +1,2 @@
-2026/06/30-03:02:14.534 815c Reusing MANIFEST c:\Users\Awenf\OneDrive - UTS\work\PCMarketPospal\project\agent_portal\vend-permission-management-main\vend-permission-management-main\gw-ordering-script\chrome_scraper_profile\Default\Session Storage/MANIFEST-000001
-2026/06/30-03:02:14.536 815c Recovering log #4
-2026/06/30-03:02:14.539 815c Reusing old log c:\Users\Awenf\OneDrive - UTS\work\PCMarketPospal\project\agent_portal\vend-permission-management-main\vend-permission-management-main\gw-ordering-script\chrome_scraper_profile\Default\Session Storage/000004.log 
+2026/07/01-19:29:11.099 9010 Creating DB e:\Github\gw-ordering-script\chrome_scraper_profile\Default\Session Storage since it was missing.
+2026/07/01-19:29:11.455 9010 Reusing MANIFEST e:\Github\gw-ordering-script\chrome_scraper_profile\Default\Session Storage/MANIFEST-000001

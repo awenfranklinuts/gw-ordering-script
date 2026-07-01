@@ -38,16 +38,29 @@ class GWOrderTool:
         frame = ttk.LabelFrame(self.root, text="Select Files", padding=10)
         frame.pack(fill="x", padx=10, pady=(10, 5))
 
-        ttk.Label(frame, text="Last Week's Order Pad (.xlsx):").grid(row=0, column=0, sticky="w", pady=2)
-        ttk.Entry(frame, textvariable=self.order_pad_path, width=80).grid(row=0, column=1, padx=5, pady=2)
-        ttk.Button(frame, text="Browse...", command=self._browse_order_pad).grid(row=0, column=2, pady=2)
+        self.order_pad_label = ttk.Label(frame, text="Last Week's Order Pad (.xlsx):")
+        self.order_pad_entry = ttk.Entry(frame, textvariable=self.order_pad_path, width=80)
+        self.order_pad_browse_btn = ttk.Button(frame, text="Browse...", command=self._browse_order_pad)
+        self.order_pad_label.grid(row=0, column=0, sticky="w", pady=2)
+        self.order_pad_entry.grid(row=0, column=1, padx=5, pady=2)
+        self.order_pad_browse_btn.grid(row=0, column=2, pady=2)
 
-        ttk.Label(frame, text="Last Week's Order Confirmation (.xlsx):").grid(row=1, column=0, sticky="w", pady=2)
-        ttk.Entry(frame, textvariable=self.order_conf_path, width=80).grid(row=1, column=1, padx=5, pady=2)
-        ttk.Button(frame, text="Browse...", command=self._browse_order_conf).grid(row=1, column=2, pady=2)
+        self.order_conf_label = ttk.Label(frame, text="Last Week's Order Confirmation (.xlsx):")
+        self.order_conf_entry = ttk.Entry(frame, textvariable=self.order_conf_path, width=80)
+        self.order_conf_browse_btn = ttk.Button(frame, text="Browse...", command=self._browse_order_conf)
+        self.order_conf_label.grid(row=1, column=0, sticky="w", pady=2)
+        self.order_conf_entry.grid(row=1, column=1, padx=5, pady=2)
+        self.order_conf_browse_btn.grid(row=1, column=2, pady=2)
 
         self.reconcile_btn = ttk.Button(frame, text="Reconcile Orders", command=self._on_compare)
         self.reconcile_btn.grid(row=2, column=1, pady=(10, 0))
+
+        # Rows hidden once Compare Orders has successfully run — see _hide_last_week_rows().
+        self.last_week_row_widgets = [
+            self.order_pad_label, self.order_pad_entry, self.order_pad_browse_btn,
+            self.order_conf_label, self.order_conf_entry, self.order_conf_browse_btn,
+            self.reconcile_btn,
+        ]
 
         self.this_week_label = ttk.Label(frame, text="This Week's Order Pad (.xlsx):")
         self.this_week_entry = ttk.Entry(frame, textvariable=self.this_week_pad_path, width=80)
@@ -66,6 +79,15 @@ class GWOrderTool:
     def _reveal_this_week_row(self):
         for widget, grid_opts in self.this_week_row_widgets:
             widget.grid(**grid_opts)
+
+    def _hide_last_week_rows(self):
+        for widget in self.last_week_row_widgets:
+            widget.grid_remove()
+
+    def _promote_compare_to_fetch_button(self):
+        """Once Compare Orders has run, the same button slot becomes the Fetch Stock from Neto trigger."""
+        self.compare_btn.config(text="Fetch Stock from Neto", command=self._on_fetch_neto, state="normal")
+        self.neto_btn = self.compare_btn
 
     def _create_treeview(self, parent, expand=True, height=None):
         container = ttk.Frame(parent)
@@ -123,6 +145,8 @@ class GWOrderTool:
             return
 
         self._show_outstanding_view()
+        self._hide_last_week_rows()
+        self._promote_compare_to_fetch_button()
 
     def _on_compare(self):
         pad_path = self.order_pad_path.get().strip()
@@ -226,9 +250,6 @@ class GWOrderTool:
 
         self.bottom_frame = ttk.Frame(self.root)
         self.bottom_frame.pack(fill="x", padx=10, pady=(0, 10))
-
-        self.neto_btn = ttk.Button(self.bottom_frame, text="Fetch Stock from Neto", command=self._on_fetch_neto)
-        self.neto_btn.pack(side="left", padx=(0, 10))
 
         ttk.Label(self.bottom_frame, textvariable=self.status_var).pack(side="left")
 
@@ -463,6 +484,17 @@ class GWOrderTool:
         ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side="left", padx=6)
 
     def _on_fetch_neto(self):
+        if self.unmatched_row_data:
+            count = len(self.unmatched_row_data)
+            messagebox.showwarning(
+                "Unmatched Product Codes",
+                f"There {'is' if count == 1 else 'are'} still {count} unmatched product code"
+                f"{'' if count == 1 else 's'} that haven't been resolved.\n\n"
+                "Please use \"Ignore Selected\" or \"Reassign to Existing Code...\" to resolve them "
+                "before fetching stock from Neto.",
+            )
+            return
+
         self.neto_btn.config(state="disabled")
         self.status_var.set("Launching Neto scraper...")
 
