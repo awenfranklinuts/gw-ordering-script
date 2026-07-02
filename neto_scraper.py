@@ -4,8 +4,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from urllib.parse import quote
+import argparse
 import json
 import os
 import re
@@ -23,11 +24,25 @@ def _looks_like_login_page(driver):
     return "identity.maropost.com" in url or "/cpanel/login" in url
 
 
+LOGIN_REDIRECT_SETTLE_TIMEOUT = 2  # seconds to allow for a delayed/client-side redirect to the login page
+LOGIN_REDIRECT_SETTLE_POLL = 0.5
+
+
 def ensure_logged_in(driver, sales_url):
     """Detect whether the scraper profile is actually logged in to Neto. If the sales
     orders page redirected to the Maropost login screen, pause here and wait for the
     user to log in in the visible browser window, polling until it succeeds or times out.
+
+    The redirect to identity.maropost.com isn't always an immediate server response by
+    the time Selenium's page-load wait resolves — it can land on an interim page that
+    then redirects a moment later. So before concluding "already logged in", briefly
+    poll to give a delayed redirect a chance to happen; otherwise we can race past the
+    login page entirely and silently scrape zero rows off of it.
     """
+    settle_deadline = time.time() + LOGIN_REDIRECT_SETTLE_TIMEOUT
+    while time.time() < settle_deadline and not _looks_like_login_page(driver):
+        time.sleep(LOGIN_REDIRECT_SETTLE_POLL)
+
     if not _looks_like_login_page(driver):
         return
 
@@ -49,20 +64,21 @@ def ensure_logged_in(driver, sales_url):
 
 
 def get_last_tuesday():
+    """Tuesday of the week *before* the current one (weeks run Mon–Sun), not just the most
+    recent past Tuesday. E.g. run on Thursday 2/7 -> current week is Mon 29/6-Sun 5/7, so
+    this returns Tuesday of the prior week: 23/6. Stable for every day within a given week."""
     today = date.today()
-    days_since_tuesday = (today.weekday() - 1) % 7
-    if days_since_tuesday == 0:
-        days_since_tuesday = 7
-    return today - timedelta(days=days_since_tuesday)
+    monday_this_week = today - timedelta(days=today.weekday())
+    tuesday_last_week = monday_this_week + timedelta(days=1) - timedelta(days=7)
+    return tuesday_last_week
 
 
-def build_sales_orders_url():
-    last_tue = get_last_tuesday()
-    from_date = quote(last_tue.strftime("%d/%m/%Y") + " 12:00am")
+def build_sales_orders_url(from_date):
+    from_date_param = quote(from_date.strftime("%d/%m/%Y") + " 12:00am")
     return (
         "https://www.pcmarket.com.au/_cpanel/orders?"
         "_note_credit_card_warning=0"
-        f"&_ftr_dp_fmdate={from_date}"
+        f"&_ftr_dp_fmdate={from_date_param}"
         "&_ftr_dp_todate=&_ftr_id=&_ftr_cus=&_ftr_sku="
         "&_ftr_da_fmdate=&_ftr_da_todate=&_ftr_di_fmdate=&_ftr_di_todate="
         "&_ftr_du_fmdate=&_ftr_du_todate=&_ftr_dc_fmdate=&_ftr_dc_todate="
@@ -97,20 +113,50 @@ def scrape_order_lines(driver):
         try:
             product_cell = row.find_element(By.CSS_SELECTOR, "td.col-product-name")
             text = product_cell.text
-            match = re.match(r'\[(\d+)\]\s*(.*)', text)
+            # SKUs aren't always all-digit (e.g. "[ZJG01493]"), so match any
+            # alphanumeric/hyphenated code in the leading brackets.
+            match = re.match(r'\[([A-Za-z0-9\-]+)\]\s*(.*)', text)
             if match:
                 sku = match.group(1)
                 name = match.group(2).split("MARKETPLACEMAXIMIZER")[0].strip()
         except Exception:
             pass
 
-        stock = 0
+        # The "Stock" cell shows one or two figures, identified by tooltip title
+        # rather than tag/position (more resilient to markup tweaks):
+        #   - "Total Stock On Hand (taking into account this orderline)" -> stock
+        #     free to sell to OTHER customers once this order is fulfilled. 0 means
+        #     we have no reserve/spare stock left to sell.
+        #   - "Stock in PC Market" (in parens) -> physical qty currently on hand,
+        #     regardless of this order. E.g. "Stock: 0 (1)" means we physically have
+        #     1 unit, but it's already spoken for — pending dispatch to this existing
+        #     order — so there's 0 left over to sell elsewhere.
+        # This second figure is only rendered by Neto when it *differs* from the
+        # first (i.e. something's reserved elsewhere) — e.g. "Stock: 1" with no
+        # parenthesized number means nothing is pending, so on-hand == available.
+        stock_available_to_sell = 0
+        stock_on_hand = None
         try:
-            stock_cell = row.find_element(By.CSS_SELECTOR, "td.col-proc .ntooltip")
-            stock_text = stock_cell.text.strip()
-            stock = int(re.match(r'-?\d+', stock_text).group())
+            available_cell = row.find_element(
+                By.CSS_SELECTOR,
+                'td.col-proc [data-original-title="Total Stock On Hand (taking into account this orderline)"]',
+            )
+            match = re.search(r'-?\d+', available_cell.text)
+            if match:
+                stock_available_to_sell = int(match.group())
         except Exception:
             pass
+        try:
+            on_hand_cell = row.find_element(
+                By.CSS_SELECTOR, 'td.col-proc [data-original-title="Stock in PC Market"]'
+            )
+            match = re.search(r'-?\d+', on_hand_cell.text)
+            if match:
+                stock_on_hand = int(match.group())
+        except Exception:
+            pass
+        if stock_on_hand is None:
+            stock_on_hand = stock_available_to_sell
 
         if sku:
             order_lines.append({
@@ -118,19 +164,25 @@ def scrape_order_lines(driver):
                 "sku": sku,
                 "product_name": name,
                 "qty": qty,
-                "stock": stock,
+                "stock": stock_available_to_sell,  # kept for backward compatibility
+                "stock_available_to_sell": stock_available_to_sell,
+                "stock_on_hand": stock_on_hand,
             })
 
     return order_lines
 
 
 def aggregate_by_sku(order_lines):
-    grouped = defaultdict(lambda: {"product_name": "", "total_qty_needed": 0, "stock": 0, "orders": []})
+    grouped = defaultdict(lambda: {
+        "product_name": "", "total_qty_needed": 0,
+        "stock_available_to_sell": 0, "stock_on_hand": 0, "orders": [],
+    })
     for line in order_lines:
         entry = grouped[line["sku"]]
         entry["product_name"] = line["product_name"]
         entry["total_qty_needed"] += line["qty"]
-        entry["stock"] = line["stock"]
+        entry["stock_available_to_sell"] = line["stock_available_to_sell"]
+        entry["stock_on_hand"] = line["stock_on_hand"]
         entry["orders"].append({"order_id": line["order_id"], "qty": line["qty"]})
 
     result = []
@@ -139,7 +191,9 @@ def aggregate_by_sku(order_lines):
             "sku": sku,
             "product_name": data["product_name"],
             "total_qty_needed": data["total_qty_needed"],
-            "stock": data["stock"],
+            "stock": data["stock_available_to_sell"],  # kept for backward compatibility
+            "stock_available_to_sell": data["stock_available_to_sell"],
+            "stock_on_hand": data["stock_on_hand"],
             "order_count": len(data["orders"]),
         })
     return result
@@ -155,7 +209,30 @@ def create_driver():
     return driver
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Scrape Neto sales orders demand data.")
+    parser.add_argument(
+        "--from-date",
+        dest="from_date",
+        default=None,
+        help="Date Placed From, in DD/MM/YYYY format (default: last Tuesday).",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+
+    last_tue = get_last_tuesday()
+    if args.from_date:
+        try:
+            from_date = datetime.strptime(args.from_date, "%d/%m/%Y").date()
+        except ValueError:
+            print(f"Invalid --from-date '{args.from_date}' (expected DD/MM/YYYY) — using last Tuesday instead.")
+            from_date = last_tue
+    else:
+        from_date = last_tue
+
     print("Starting Chrome with scraper profile...")
     print("You can keep your normal Chrome open.")
 
@@ -165,10 +242,11 @@ def main():
 
     driver = create_driver()
 
-    sales_url = build_sales_orders_url()
-    last_tue = get_last_tuesday()
-    print(f"Filtering sales orders from: {last_tue.strftime('%d/%m/%Y')} (last Tuesday)")
+    sales_url = build_sales_orders_url(from_date)
+    date_note = "last Tuesday" if from_date == last_tue else "custom date"
+    print(f"Filtering sales orders from: {from_date.strftime('%d/%m/%Y')} ({date_note})")
 
+    print("Loading Neto sales orders page...")
     driver.get(sales_url)
     WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
 
@@ -225,14 +303,15 @@ def main():
     driver.switch_to.window(driver.window_handles[0])
 
     print("Browser is open with 2 tabs.")
+    print("Done — leaving the browser open for review.")
 
-    try:
-        print("Press Enter to close the browser...")
-        input()
-    except EOFError:
-        pass
-
-    driver.quit()
+    # Deliberately not calling driver.quit() and not blocking on input() here. This
+    # script is launched as a subprocess by the GUI tool with the real Terminal's
+    # stdin inherited, so input() would hang forever waiting for a keypress in a
+    # window nobody's looking at — the GUI would never see the process finish, and
+    # the fetched data would never get applied to the table. The data we care about
+    # (sales_order_demand.json) is already written by this point, so it's safe to
+    # just exit and leave Chrome open for manual review.
 
 
 if __name__ == "__main__":
