@@ -3,3 +3,5 @@ sales_order_demand.json
 saved_products.json
 __pycache__/gw_order_tool.cpython-310.pyc
 __pycache__/neto_scraper.cpython-310.pyc
+/build
+/dist/chrome_scraper_profile

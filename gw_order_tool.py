@@ -4,6 +4,7 @@ import openpyxl
 import calendar
 import json
 import math
+import re
 import subprocess
 import sys
 import os
@@ -33,8 +34,9 @@ class GWOrderTool:
         "Recommended Packs to Order is based on current sellable stock (1 pack when sellable "
         "stock is 2 or less), not on qty sold. Sellable Stock shows on-hand stock in "
         "brackets when they differ. Tick one or more lines, right-click to change "
-        "their recommendation, then Confirm to send them back to the main table, or "
-        "Ignore to skip ordering them."
+        "their recommendation, then Confirm to send them back to the main table "
+        "(Packs to Order = recommendation + Qty Outstanding), or Ignore to skip "
+        "ordering them."
     )
     SAVED_PRODUCTS_DESC = (
         "Carried Over From Last Run — saved from a previous unmatched list for later "
@@ -261,6 +263,16 @@ class GWOrderTool:
         self.compare_btn.config(text="Fetch Stock from Neto", command=self._on_fetch_neto, state="normal")
         self.neto_btn = self.compare_btn
         self.neto_date_frame.grid(row=4, column=0, sticky="e", padx=(0, 5), pady=(10, 0))
+
+    def _promote_fetch_to_confirm_button(self):
+        """Once Fetch Stock from Neto has completed, the same button slot becomes the
+        final step — write Packs to Order into this week's pad and show the final list."""
+        self.neto_btn.config(
+            text="Confirm Final List & Append to This Week's Order Pad",
+            command=self._on_confirm_final_list,
+            state="normal",
+        )
+        self.neto_date_frame.grid_remove()
 
     def _start_over(self):
         """Reset everything back to the initial state — for when the wrong files got
@@ -578,10 +590,14 @@ class GWOrderTool:
 
         data_rows = []
         for row in rows[4:]:
+            # Rows can come back shorter than expected (read-only mode trims to the
+            # sheet's calculated dimensions) — guard instead of raising IndexError.
+            if len(row) <= 5:
+                continue
             product_code = row[5]
             if product_code is None or str(product_code).strip() == "":
                 continue
-            order_qty = row[6]
+            order_qty = row[6] if len(row) > 6 else None
             try:
                 qty = int(order_qty) if order_qty is not None and str(order_qty).strip() != "" else 0
             except (ValueError, TypeError):
@@ -618,10 +634,12 @@ class GWOrderTool:
 
             self.conf_qty_lookup = {}
             for row in rows[1:]:
+                if not row:
+                    continue
                 product_code = row[0]
                 if product_code is None:
                     continue
-                qty_available = row[4]
+                qty_available = row[4] if len(row) > 4 else None
                 try:
                     qty = int(qty_available) if qty_available is not None and str(qty_available).strip() != "" else 0
                 except (ValueError, TypeError):
@@ -794,7 +812,10 @@ class GWOrderTool:
         self.main_code_pad_index = {
             str(code): i for i, (code, *_rest) in enumerate(matched_rows)
         }
-        self._enable_row_copy(self.tree)
+        self._enable_row_copy(
+            self.tree,
+            extra_commands=[("Change Packs to Order...", self._on_change_packs_to_order)],
+        )
 
         self._set_saved_products_rows(self.saved_products)
         self._set_unmatched_rows(
@@ -866,9 +887,11 @@ class GWOrderTool:
         return rows
 
     def _on_ignore_pack_review(self):
-        """Drop the selected Pack Review lines without ordering anything — for when
-        current stock is fine and no packs are needed this week."""
-        if not self.pack_review_tree:
+        """Skip ordering the selected Pack Review lines — for when current stock is
+        fine and no packs are needed this week. The lines still return to the main
+        table (with Packs to Order 0) so they stay visible and searchable; they just
+        won't be written to the Order Pad."""
+        if not self.pack_review_tree or not self.tree:
             return
         selected = self.pack_review_tree.selection()
         if not selected:
@@ -876,12 +899,24 @@ class GWOrderTool:
             return
 
         for iid in selected:
+            self._insert_main_row(
+                self.pack_review_tree.set(iid, "Product Code"),
+                self.pack_review_tree.set(iid, "Product Name"),
+                self.pack_review_tree.set(iid, "Qty Outstanding"),
+                self.pack_review_tree.set(iid, self.NETO_QTY_SOLD_HEADER),
+                0,
+            )
             self.pack_review_tree.delete(iid)
             self.pack_review_row_data.pop(iid, None)
 
+        # Reattach main-table rows in gw_all_iids order so the returned lines land in
+        # their original pad position rather than being tacked onto the end.
+        self._filter_tree(self.tree)
+
         count = len(selected)
         self.status_var.set(
-            f"Ignored {count} pack-based line{'s' if count != 1 else ''} — no packs will be ordered."
+            f"Ignored {count} pack-based line{'s' if count != 1 else ''} — returned to the "
+            "main table with 0 packs to order."
         )
 
     def _on_confirm_pack_review(self):
@@ -896,12 +931,18 @@ class GWOrderTool:
             return
 
         for iid in selected:
+            # Confirmed lines order their recommendation on top of last week's
+            # shortfall: Packs to Order = Recommended Packs + Qty Outstanding.
+            packs_to_order = (
+                self._cell_int(self.pack_review_tree, iid, self.RECOMMENDED_PACKS_HEADER)
+                + self._cell_int(self.pack_review_tree, iid, "Qty Outstanding")
+            )
             self._insert_main_row(
                 self.pack_review_tree.set(iid, "Product Code"),
                 self.pack_review_tree.set(iid, "Product Name"),
                 self.pack_review_tree.set(iid, "Qty Outstanding"),
                 self.pack_review_tree.set(iid, self.NETO_QTY_SOLD_HEADER),
-                self.pack_review_tree.set(iid, self.RECOMMENDED_PACKS_HEADER),
+                packs_to_order,
             )
             self.pack_review_tree.delete(iid)
             self.pack_review_row_data.pop(iid, None)
@@ -921,9 +962,15 @@ class GWOrderTool:
         appended to; ordering is restored by placing the new iid at the right spot in
         gw_all_iids and letting _filter_tree reattach everything in that order."""
         key = str(code)
+        # The leading cell is the bulk-select checkbox column — every tree has it
+        # prepended by _populate_tree, so a raw insert must include it too or all
+        # the values land one column to the left.
         iid = self.tree.insert(
             "", "end",
-            values=[str(code), str(name), str(qty_outstanding), str(qty_sold), str(packs_to_order)],
+            values=[
+                self.UNCHECKED, str(code), str(name),
+                str(qty_outstanding), str(qty_sold), str(packs_to_order),
+            ],
         )
         self.main_row_iid[key] = iid
 
@@ -983,6 +1030,45 @@ class GWOrderTool:
         else:
             self.status_var.set(f"Recommended packs set to {new_value} for {len(selected)} lines.")
 
+    def _on_change_packs_to_order(self):
+        """Right-click override on the main table — set Packs to Order directly,
+        e.g. to order a line that had no Neto sales, or zero out one that did.
+        Applies one number to every ticked line, same as the Pack Review version."""
+        if not self.tree:
+            return
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showinfo("No Selection", "Tick one or more lines to change their packs to order.")
+            return
+
+        first = selected[0]
+        try:
+            current = int(self.tree.set(first, self.PACKS_TO_ORDER_HEADER) or 0)
+        except ValueError:
+            current = 0
+
+        if len(selected) == 1:
+            code = self.tree.set(first, "Product Code")
+            name = self.tree.set(first, "Product Name")
+            prompt = f"Packs to order for {code}{' — ' + name if name else ''}:"
+        else:
+            prompt = f"Packs to order for the {len(selected)} ticked lines:"
+
+        new_value = simpledialog.askinteger(
+            "Change Packs to Order", prompt,
+            parent=self.root, initialvalue=current, minvalue=0,
+        )
+        if new_value is None:
+            return
+
+        for iid in selected:
+            self.tree.set(iid, self.PACKS_TO_ORDER_HEADER, new_value)
+
+        if len(selected) == 1:
+            self.status_var.set(f"Packs to order for {code} set to {new_value}.")
+        else:
+            self.status_var.set(f"Packs to order set to {new_value} for {len(selected)} lines.")
+
     def _set_saved_products_rows(self, rows):
         """(Re)populate the Carried Over From Last Run panel from self.saved_products —
         entries saved via 'Save for Next Order' on the Unmatched panel, persisted in
@@ -1008,16 +1094,32 @@ class GWOrderTool:
         if not self.paned or not self.left_paned:
             return
 
+        desired = []
+        if self.neto_fetch_done and self.saved_products_frame:
+            desired.append(self.saved_products_frame)
+        if self.unmatched_frame:
+            desired.append(self.unmatched_frame)
+        if self.neto_fetch_done and self.pack_review_frame:
+            desired.append(self.pack_review_frame)
+
+        # If the right panels are already attached in the right order (and the outer
+        # split is set up), leave everything alone — action buttons repopulate their
+        # panels constantly, and rebuilding here would throw away the sash positions
+        # the user has dragged to expand a panel.
+        if (
+            list(self.left_paned.panes()) == [str(f) for f in desired]
+            and str(self.left_paned) in self.paned.panes()
+            and self.main_table_frame is not None
+            and str(self.main_table_frame) in self.paned.panes()
+        ):
+            return
+
         for frame in (self.saved_products_frame, self.unmatched_frame, self.pack_review_frame):
             if frame and str(frame) in self.left_paned.panes():
                 self.left_paned.forget(frame)
 
-        if self.neto_fetch_done and self.saved_products_frame:
-            self.left_paned.add(self.saved_products_frame, weight=1)
-        if self.unmatched_frame:
-            self.left_paned.add(self.unmatched_frame, weight=1)
-        if self.neto_fetch_done and self.pack_review_frame:
-            self.left_paned.add(self.pack_review_frame, weight=1)
+        for frame in desired:
+            self.left_paned.add(frame, weight=1)
 
         if self.left_paned and str(self.left_paned) not in self.paned.panes():
             # weight=0 keeps the left column at a fixed, narrow width — it doesn't
@@ -1283,8 +1385,9 @@ class GWOrderTool:
             self._set_saved_products_rows(self.saved_products)
 
         # Carried-over items predate this session, so there's no "Qty Sold on Neto"
-        # context to preserve — always reassign onto Qty Outstanding.
-        self._open_reassign_dialog(code, name, qty, "Qty Outstanding", on_resolved)
+        # context — reassigning one goes straight onto the target row's Packs to
+        # Order, so it actually gets ordered this week.
+        self._open_reassign_dialog(code, name, qty, self.PACKS_TO_ORDER_HEADER, on_resolved)
 
     def _on_reassign_unmatched(self):
         if not self.unmatched_tree:
@@ -1338,7 +1441,15 @@ class GWOrderTool:
             return
 
         is_neto_mode = target_column == self.NETO_QTY_SOLD_HEADER
-        qty_label_text = f"{self.NETO_QTY_SOLD_HEADER}:" if is_neto_mode else "Qty Outstanding:"
+        is_packs_mode = target_column == self.PACKS_TO_ORDER_HEADER
+        if is_neto_mode:
+            qty_label_text = f"{self.NETO_QTY_SOLD_HEADER}:"
+        elif is_packs_mode:
+            # Additive — the entered qty is stacked on top of whatever Packs to
+            # Order the target row already has (see on_confirm).
+            qty_label_text = "Packs to Add:"
+        else:
+            qty_label_text = "Qty Outstanding:"
 
         dialog = tk.Toplevel(self.root)
         dialog.title("Reassign Product Code")
@@ -1365,6 +1476,10 @@ class GWOrderTool:
         qty_entry.grid(row=2, column=1, sticky="w", padx=10, pady=4)
 
         def on_code_selected(event=None):
+            # Packs mode adds at confirm time, so the field keeps showing just the
+            # qty being added — pre-summing here would double it up.
+            if is_packs_mode:
+                return
             # Suggest the combined total (target row's current qty + this unmatched row's
             # qty) rather than silently overwriting whatever the target already had.
             main_iid = self.main_row_iid.get(code_var.get().strip())
@@ -1399,7 +1514,16 @@ class GWOrderTool:
                 )
                 return
 
-            if is_neto_mode:
+            if is_packs_mode:
+                # Carried-over reassign — ADD the qty onto the target row's existing
+                # Packs to Order (e.g. 10 already there + 5 carried over = 15), no
+                # Neto sales context, no pack-review diversion.
+                self.tree.set(
+                    main_iid,
+                    self.PACKS_TO_ORDER_HEADER,
+                    self._cell_int(self.tree, main_iid, self.PACKS_TO_ORDER_HEADER) + new_qty,
+                )
+            elif is_neto_mode:
                 # Reassigning a Neto-sold code onto an existing row — write to Qty Sold
                 # on Neto (not Qty Outstanding) and recompute Packs to Order. If that
                 # pushes it over the pack-review threshold, move it to the Pack Review
@@ -1436,7 +1560,11 @@ class GWOrderTool:
                     self._set_pack_review_rows(pack_rows)
                 else:
                     self.tree.set(main_iid, self.NETO_QTY_SOLD_HEADER, new_qty)
-                    self.tree.set(main_iid, self.PACKS_TO_ORDER_HEADER, packs_to_order)
+                    self.tree.set(
+                        main_iid,
+                        self.PACKS_TO_ORDER_HEADER,
+                        packs_to_order + self._cell_int(self.tree, main_iid, "Qty Outstanding"),
+                    )
             else:
                 self.tree.set(main_iid, "Qty Outstanding", new_qty)
                 self.outstanding_lookup[new_code] = new_qty
@@ -1575,6 +1703,14 @@ class GWOrderTool:
 
         self._apply_neto_stock_data(sku_summary)
 
+    @staticmethod
+    def _cell_int(tree, iid, column):
+        """Read a tree cell as an int — blank or non-numeric cells count as 0."""
+        try:
+            return int(str(tree.set(iid, column)).strip() or 0)
+        except (TypeError, ValueError):
+            return 0
+
     @classmethod
     def _recommended_packs(cls, stock_available):
         """Stock-based pack recommendation: pack products are ordered to keep shelf
@@ -1594,11 +1730,12 @@ class GWOrderTool:
 
     def _apply_neto_stock_data(self, sku_summary):
         """For every SKU sold on Neto since last Tuesday, show the qty sold in its own
-        column for review, plus how many whole packs that works out to (rounded up —
-        e.g. 12 units sold at 6/pack = 2 packs). Qty Outstanding is left exactly as it
-        was before the fetch — deliberately NOT auto-added here, so it can be checked
-        first. Products sold in packs of more than one, with more than 1 unit sold on
-        Neto, are pulled OUT of the main table and into the Pack Review panel instead;
+        column for review, and fill Packs to Order = Qty Outstanding + whole packs
+        sold (rounded up — e.g. 12 units sold at 6/pack = 2 packs). Rows with no Neto
+        sales but a Qty Outstanding get that as their Packs to Order, so last week's
+        shortfall is reordered too. Products sold in packs of more than one, with
+        more than 1 unit sold on Neto, are pulled OUT of the main table and into the
+        Pack Review panel instead;
         there the recommendation is based on current sellable stock rather than qty
         sold (see _recommended_packs), and each line is confirmed or ignored manually.
         SKUs that don't exist in this week's table at all are surfaced in the
@@ -1636,7 +1773,12 @@ class GWOrderTool:
             qty_in_pack = self.qty_in_pack_lookup.get(sku, 1)
             if not isinstance(qty_in_pack, int) or qty_in_pack <= 0:
                 qty_in_pack = 1
-            packs_to_order = math.ceil(qty_needed / qty_in_pack)
+            # Packs to Order = Qty Outstanding (already in packs — column G of last
+            # week's pad counts packs) + whole packs to cover what sold on Neto.
+            packs_to_order = (
+                self._cell_int(self.tree, main_iid, "Qty Outstanding")
+                + math.ceil(qty_needed / qty_in_pack)
+            )
 
             if qty_in_pack > 1 and qty_needed > 1:
                 # Needs manual review — pull it out of the main table entirely rather
@@ -1652,11 +1794,21 @@ class GWOrderTool:
                     self.tree.gw_all_iids = [i for i in self.tree.gw_all_iids if i != main_iid]
                 del self.main_row_iid[sku]
             else:
-                # Qty Outstanding is intentionally untouched here — see docstring.
                 self.tree.set(main_iid, self.NETO_QTY_SOLD_HEADER, qty_needed)
                 self.tree.set(main_iid, self.PACKS_TO_ORDER_HEADER, packs_to_order)
 
             updated += 1
+
+        # Rows with no Neto sales still reorder last week's shortfall: blank Packs
+        # to Order + a Qty Outstanding becomes Packs to Order = Qty Outstanding.
+        for main_iid in self.main_row_iid.values():
+            if not self.tree.exists(main_iid):
+                continue
+            if str(self.tree.set(main_iid, self.PACKS_TO_ORDER_HEADER)).strip():
+                continue
+            qty_outstanding = self._cell_int(self.tree, main_iid, "Qty Outstanding")
+            if qty_outstanding > 0:
+                self.tree.set(main_iid, self.PACKS_TO_ORDER_HEADER, qty_outstanding)
 
         self._set_unmatched_rows(
             unmatched, self.UNMATCHED_NETO_DESC,
@@ -1673,6 +1825,185 @@ class GWOrderTool:
             status += "."
         self.status_var.set(status)
 
+        # Fetch is done — the button's job changes to the final confirm/append step.
+        self._promote_fetch_to_confirm_button()
+
+    def _on_confirm_final_list(self):
+        """Final step: write each main-table line's Packs to Order into column G of
+        this week's Order Pad (matched by product code, never by row position), then
+        collapse the whole view down to a single table of just the lines being
+        ordered (Packs to Order >= 1)."""
+        if self.unmatched_row_data:
+            count = len(self.unmatched_row_data)
+            messagebox.showwarning(
+                "Unmatched Product Codes",
+                f"There {'is' if count == 1 else 'are'} still {count} unmatched product code"
+                f"{'' if count == 1 else 's'} that haven't been resolved.\n\n"
+                "Please resolve them (Ignore, Save for Next Order, or Reassign) before "
+                "confirming the final list.",
+            )
+            return
+        if self.pack_review_row_data:
+            count = len(self.pack_review_row_data)
+            messagebox.showwarning(
+                "Pack Review Pending",
+                f"There {'is' if count == 1 else 'are'} still {count} pack-based line"
+                f"{'' if count == 1 else 's'} in Pack Review.\n\n"
+                "Please Confirm or Ignore them before confirming the final list.",
+            )
+            return
+
+        # Packs to Order per product code, straight from the main table (>= 1 only).
+        order_lines = {}
+        for iid in getattr(self.tree, "gw_all_iids", ()):
+            if not self.tree.exists(iid):
+                continue
+            code = str(self.tree.set(iid, "Product Code")).strip()
+            try:
+                packs = int(self.tree.set(iid, self.PACKS_TO_ORDER_HEADER) or 0)
+            except ValueError:
+                packs = 0
+            if packs >= 1:
+                order_lines[code] = packs
+
+        if not order_lines:
+            messagebox.showinfo(
+                "Nothing to Order",
+                "No products have Packs to Order of 1 or more — there's nothing to write "
+                "to the Order Pad.",
+            )
+            return
+
+        pad_path = self.this_week_pad_path.get().strip()
+        if not messagebox.askyesno(
+            "Confirm Final List",
+            f"Write order qty for {len(order_lines)} product(s) into column G of\n"
+            f"{os.path.basename(pad_path)}?\n\n"
+            "This modifies the file on disk.",
+        ):
+            return
+
+        try:
+            written, not_found = self._write_order_qty_to_pad(pad_path, order_lines)
+        except PermissionError:
+            messagebox.showerror(
+                "File In Use",
+                f"Couldn't save {os.path.basename(pad_path)} — it looks like it's open "
+                "in Excel. Please close it and try again.",
+            )
+            return
+        except Exception as e:
+            messagebox.showerror("Failed to Write Order Pad", f"Couldn't update the Order Pad:\n{e}")
+            return
+
+        if not_found:
+            # Shouldn't happen since the main table was built from this same file, but
+            # if the file changed on disk since it was loaded, don't fail silently.
+            messagebox.showwarning(
+                "Some Codes Not Found",
+                f"{len(not_found)} product code(s) weren't found in the Order Pad and were "
+                "NOT written:\n\n" + "\n".join(not_found),
+            )
+
+        self._show_final_list_view(order_lines)
+        self.status_var.set(
+            f"Done — wrote order qty for {written} product(s) into column G of "
+            f"{os.path.basename(pad_path)}."
+        )
+
+    @staticmethod
+    def _write_order_qty_to_pad(path, order_lines):
+        """Write packs-to-order into column G of the pad, matching each row by the
+        product code in column F (data starts at row 5). Matching by code — not row
+        position — means a pad that gained/lost/reordered rows since it was loaded
+        still gets every qty on the right line. Only the first occurrence of a
+        duplicated code is written (mirrors how the table deduplicates on load).
+        Returns (written_count, sorted list of codes not found in the file)."""
+        wb = openpyxl.load_workbook(path)
+        try:
+            ws = wb[wb.sheetnames[0]]
+            remaining = dict(order_lines)
+            written = 0
+            for row in ws.iter_rows(min_row=5):
+                if len(row) <= 6:
+                    continue
+                code = row[5].value  # column F — Product Code
+                if code is None:
+                    continue
+                key = str(code).strip()
+                if key in remaining:
+                    row[6].value = remaining.pop(key)  # column G — Order
+                    written += 1
+                    if not remaining:
+                        break
+            wb.save(path)
+        finally:
+            wb.close()
+        return written, sorted(remaining)
+
+    def _show_final_list_view(self, order_lines):
+        """Replace the three-panel layout with a single table showing only the lines
+        that were actually ordered (Packs to Order >= 1), in pad order."""
+        rows = []
+        for iid in getattr(self.tree, "gw_all_iids", ()):
+            if not self.tree.exists(iid):
+                continue
+            code = str(self.tree.set(iid, "Product Code")).strip()
+            if code not in order_lines:
+                continue
+            rows.append((
+                code,
+                self.tree.set(iid, "Product Name"),
+                self.tree.set(iid, self.PACKS_TO_ORDER_HEADER),
+            ))
+
+        if self.table_container:
+            self.table_container.destroy()
+        # Drop all references to the old panels so _sync_paned_layout and the panel
+        # action handlers become no-ops from here on.
+        self.paned = None
+        self.left_paned = None
+        self.saved_products_frame = None
+        self.saved_products_tree = None
+        self.saved_products_row_data = {}
+        self.unmatched_frame = None
+        self.unmatched_tree = None
+        self.unmatched_row_data = {}
+        self.pack_review_frame = None
+        self.pack_review_tree = None
+        self.pack_review_row_data = {}
+        self.main_table_frame = None
+
+        self.table_container = ttk.Frame(self.root)
+        self.table_container.pack(fill="both", expand=True, padx=10, pady=(5, 5))
+        ttk.Label(
+            self.table_container,
+            text=(
+                f"Final Order List — {len(rows)} line(s) written to column G of "
+                f"{os.path.basename(self.this_week_pad_path.get())}"
+            ),
+            font=("TkDefaultFont", 10, "bold"),
+        ).pack(anchor="w", pady=(0, 4))
+
+        self.tree = self._create_treeview(self.table_container)
+        iids = self._populate_tree(
+            self.tree,
+            ["Product Code", "Product Name", self.PACKS_TO_ORDER_HEADER],
+            rows,
+        )
+        self.main_row_iid = {
+            str(code): iid for (code, *_rest), iid in zip(rows, iids)
+        }
+        self._enable_row_copy(self.tree)
+        self._build_bottom_frame()
+
+        # The append is done — hide the button rather than leaving a disabled one
+        # around (a disabled neto_btn would also make Start Over think a fetch is
+        # still running).
+        if self.neto_btn is not None:
+            self.neto_btn.grid_remove()
+            self.neto_btn = None
+
     def _populate_tree(self, tree, headers, data_rows):
         # tree.get_children() only returns currently-attached (visible) items — anything
         # hidden by an active search filter is detached, not deleted, so it has to be
@@ -1688,8 +2019,15 @@ class GWOrderTool:
         headers = [self.CHECK_HEADER] + list(headers)
 
         tree["columns"] = headers
+        # Fresh data arrives in natural (pad) order — clear any previous sort.
+        tree.gw_sort = (None, False)
         for h in headers:
             tree.heading(h, text=h)
+            # Clicking a column heading sorts by it, toggling asc/desc on repeat
+            # clicks. The checkbox heading keeps its tick-all behaviour instead
+            # (handled in _on_tree_click, which swallows the click).
+            if h != self.CHECK_HEADER:
+                tree.heading(h, command=lambda t=tree, col=h: self._sort_tree_by(t, col))
             min_w = self.COLUMN_MIN_WIDTHS.get(h, self.DEFAULT_COLUMN_MIN_WIDTH)
             tree.column(h, width=min_w, minwidth=min_w, stretch=True)
 
@@ -1711,16 +2049,62 @@ class GWOrderTool:
 
         return iids
 
+    @staticmethod
+    def _sort_key(value):
+        """Sort key that keeps numbers numeric: leading-number cells (including
+        Sellable Stock's '5 (6)' style and negatives) sort by their number, pure
+        text sorts alphabetically after them, and blanks always go last."""
+        text = str(value).strip()
+        if not text:
+            return (2, 0.0, "")
+        m = re.match(r"^-?\d+(?:\.\d+)?", text)
+        if m:
+            return (0, float(m.group()), text.lower())
+        return (1, 0.0, text.lower())
+
+    def _sort_tree_by(self, tree, column):
+        """Heading-click sort for every table: first click sorts ascending, clicking
+        the same heading again flips to descending. Sorts gw_all_iids (the canonical
+        row order) and lets _filter_tree reattach rows in that order, so an active
+        search filter stays applied and hidden rows come back sorted too."""
+        all_iids = [iid for iid in getattr(tree, "gw_all_iids", ()) if tree.exists(iid)]
+        if not all_iids:
+            return
+
+        prev_column, prev_descending = getattr(tree, "gw_sort", (None, False))
+        descending = not prev_descending if prev_column == column else False
+        tree.gw_sort = (column, descending)
+
+        # Blank cells stay at the bottom whichever direction the sort runs — a
+        # blank qty is "no data", not a value that belongs above/below zero.
+        non_blank = [iid for iid in all_iids if str(tree.set(iid, column)).strip()]
+        blank = [iid for iid in all_iids if not str(tree.set(iid, column)).strip()]
+        non_blank.sort(key=lambda iid: self._sort_key(tree.set(iid, column)), reverse=descending)
+        tree.gw_all_iids = non_blank + blank
+        self._filter_tree(tree)
+        self._update_sort_indicators(tree)
+
+    def _update_sort_indicators(self, tree):
+        """Show ▲/▼ on the currently sorted column's heading and clear it elsewhere."""
+        column, descending = getattr(tree, "gw_sort", (None, False))
+        for h in tree["columns"]:
+            if h == self.CHECK_HEADER:
+                continue
+            suffix = (" ▼" if descending else " ▲") if h == column else ""
+            tree.heading(h, text=h + suffix)
+
     def _filter_tree(self, tree):
         """Show only rows whose Product Code or Product Name match the search box,
         using detach/reattach rather than delete/reinsert so item ids stay stable —
         main_row_iid and unmatched_row_data reference these ids directly."""
         search_var = getattr(tree, "gw_search_var", None)
         all_iids = getattr(tree, "gw_all_iids", None)
-        if search_var is None or not all_iids:
+        if not all_iids:
             return
 
-        query = search_var.get().strip().lower()
+        # A tree without a search box just reattaches everything in gw_all_iids
+        # order — that's what keeps heading-click sorting working on it too.
+        query = search_var.get().strip().lower() if search_var is not None else ""
         columns = tree["columns"]
         has_code = "Product Code" in columns
         has_name = "Product Name" in columns
