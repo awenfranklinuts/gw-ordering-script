@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, simpledialog
 import openpyxl
 import calendar
 import json
@@ -21,11 +21,20 @@ class GWOrderTool:
         "(barcode or product code may have changed; ignore or reassign to restock the right line)"
     )
     NETO_QTY_SOLD_HEADER = "Qty Sold on Neto"
-    QTY_IN_PACK_HEADER = "Qty in Pack"
+    QTY_IN_PACK_HEADER = "Units per Pack"
     PACKS_TO_ORDER_HEADER = "Packs to Order"
+    SELLABLE_STOCK_HEADER = "Sellable Stock"
+    RECOMMENDED_PACKS_HEADER = "Recommended Packs to Order"
+    # Sellable stock on Neto at or below this means the shelf is running low and one
+    # pack should be reordered — see _recommended_packs().
+    LOW_STOCK_THRESHOLD = 2
     PACK_REVIEW_DESC = (
-        "Pack-Based Products Needing Review — sold in packs of more than one and more "
-        "than 1 unit sold on Neto; double-check how many packs to actually order"
+        "Pack-Based Products Needing Review — sold in packs of more than one. "
+        "Recommended Packs to Order is based on current sellable stock (1 pack when sellable "
+        "stock is 2 or less), not on qty sold. Sellable Stock shows on-hand stock in "
+        "brackets when they differ. Tick one or more lines, right-click to change "
+        "their recommendation, then Confirm to send them back to the main table, or "
+        "Ignore to skip ordering them."
     )
     SAVED_PRODUCTS_DESC = (
         "Carried Over From Last Run — saved from a previous unmatched list for later "
@@ -33,13 +42,23 @@ class GWOrderTool:
     )
     SAVED_PRODUCTS_FILENAME = "saved_products.json"
 
+    # Bulk-select checkbox column, prepended to every table by _populate_tree.
+    # It's a live view of the tree's normal selection: clicking a row's box toggles
+    # that row in/out of the selection without needing Ctrl/Shift, and clicking the
+    # column heading ticks/unticks all visible rows. Every action button then simply
+    # operates on the ticked (selected) rows. See _on_tree_click/_sync_check_marks.
+    CHECK_HEADER = "☑"
+    CHECKED = "☑"
+    UNCHECKED = "☐"
+
     # Used by _resize_tree_columns() to proportionally fill a table's full width instead
     # of leaving blank space — ttk's built-in column "stretch" is unreliable across
     # platforms (e.g. doesn't kick in consistently on macOS), so widths are recomputed
-    # by hand on every resize. Product Name gets the lion's share of any extra space.
-    COLUMN_WEIGHTS = {"Product Name": 3}
+    # by hand on every resize. Product Name gets the lion's share of any extra space;
+    # the checkbox column stays at a fixed sliver.
+    COLUMN_WEIGHTS = {"Product Name": 3, CHECK_HEADER: 0}
     DEFAULT_COLUMN_WEIGHT = 1
-    COLUMN_MIN_WIDTHS = {"Product Name": 200}
+    COLUMN_MIN_WIDTHS = {"Product Name": 200, "Recommended Packs to Order": 160, CHECK_HEADER: 34}
     DEFAULT_COLUMN_MIN_WIDTH = 90
 
     # Initial pixel width of the left column (Unmatched/Pack Review) — kept narrow and
@@ -84,6 +103,12 @@ class GWOrderTool:
         self.pack_review_tree = None
         self.pack_review_row_data = {}
         self.main_row_iid = {}
+        # Sellable/on-hand stock per SKU as scraped from Neto — {sku: (available, on_hand)}.
+        # Feeds the Sellable Stock column and the stock-based pack recommendation.
+        self.neto_stock_lookup = {}
+        # Original position of each product code in this week's pad, so a confirmed
+        # Pack Review line can slot back into the main table where it came from.
+        self.main_code_pad_index = {}
         # Carried Over From Last Run and Pack Review only become visible once Fetch
         # Stock from Neto has completed at least once — before that, only Unmatched
         # Product Codes is relevant (see _sync_paned_layout()).
@@ -275,6 +300,8 @@ class GWOrderTool:
         self.pack_review_tree = None
         self.pack_review_row_data = {}
         self.main_row_iid = {}
+        self.neto_stock_lookup = {}
+        self.main_code_pad_index = {}
         self.neto_fetch_done = False
         # Note: self.saved_products itself is NOT reset — it's persisted in
         # saved_products.json independently of this working session.
@@ -449,6 +476,13 @@ class GWOrderTool:
         tree.configure(selectmode="extended")
         tree.bind("<Control-a>", lambda e, t=tree: self._select_all_rows(t))
         tree.bind("<Command-a>", lambda e, t=tree: self._select_all_rows(t))
+
+        # Checkbox-column interactions — box clicks toggle rows in/out of the
+        # selection, heading click ticks/unticks everything visible, and any
+        # selection change (including Ctrl/Shift-click or Ctrl+A) refreshes the
+        # tick marks so they always mirror the actual selection.
+        tree.bind("<Button-1>", lambda e, t=tree: self._on_tree_click(t, e))
+        tree.bind("<<TreeviewSelect>>", lambda e, t=tree: self._sync_check_marks(t))
 
         if searchable:
             search_frame = ttk.Frame(container)
@@ -732,7 +766,19 @@ class GWOrderTool:
             self.left_paned, self.PACK_REVIEW_DESC, on_toggle=self._update_left_pane_sizes
         )
         self.pack_review_tree = self._create_treeview(pack_review_content, expand=True, height=8)
-        self._enable_row_copy(self.pack_review_tree)
+        pack_action_frame = ttk.Frame(pack_review_content)
+        pack_action_frame.pack(fill="x", pady=(6, 0))
+        ttk.Button(
+            pack_action_frame, text="Ignore Selected", command=self._on_ignore_pack_review
+        ).pack(side="left", padx=(0, 8))
+        ttk.Button(
+            pack_action_frame, text="Confirm & Return to Main Table",
+            command=self._on_confirm_pack_review,
+        ).pack(side="left")
+        self._enable_row_copy(
+            self.pack_review_tree,
+            extra_commands=[("Change Recommended Packs...", self._on_change_recommended_packs)],
+        )
 
         self.main_table_frame = ttk.Frame(self.paned)
         self.tree = self._create_treeview(self.main_table_frame)
@@ -744,6 +790,9 @@ class GWOrderTool:
         self.main_row_iid = {
             str(code): iid
             for (code, _name, _qty, _sold, _packs), iid in zip(matched_rows, main_iids)
+        }
+        self.main_code_pad_index = {
+            str(code): i for i, (code, *_rest) in enumerate(matched_rows)
         }
         self._enable_row_copy(self.tree)
 
@@ -780,10 +829,12 @@ class GWOrderTool:
 
     def _set_pack_review_rows(self, rows):
         """(Re)populate the Pack Review panel with products sold in packs of more than
-        one where more than 1 unit sold on Neto — see _apply_neto_stock_data()."""
+        one where more than 1 unit sold on Neto — see _apply_neto_stock_data().
+        Row tuples: (code, name, qty_outstanding, qty_sold, sellable_stock_display,
+        units_per_pack, recommended_packs)."""
         headers = [
             "Product Code", "Product Name", "Qty Outstanding", self.NETO_QTY_SOLD_HEADER,
-            self.QTY_IN_PACK_HEADER, self.PACKS_TO_ORDER_HEADER,
+            self.SELLABLE_STOCK_HEADER, self.QTY_IN_PACK_HEADER, self.RECOMMENDED_PACKS_HEADER,
         ]
         iids = self._populate_tree(self.pack_review_tree, headers, rows)
         self.pack_review_row_data = {
@@ -808,10 +859,129 @@ class GWOrderTool:
                 self.pack_review_tree.set(iid, "Product Name"),
                 self.pack_review_tree.set(iid, "Qty Outstanding"),
                 self.pack_review_tree.set(iid, self.NETO_QTY_SOLD_HEADER),
+                self.pack_review_tree.set(iid, self.SELLABLE_STOCK_HEADER),
                 self.pack_review_tree.set(iid, self.QTY_IN_PACK_HEADER),
-                self.pack_review_tree.set(iid, self.PACKS_TO_ORDER_HEADER),
+                self.pack_review_tree.set(iid, self.RECOMMENDED_PACKS_HEADER),
             ))
         return rows
+
+    def _on_ignore_pack_review(self):
+        """Drop the selected Pack Review lines without ordering anything — for when
+        current stock is fine and no packs are needed this week."""
+        if not self.pack_review_tree:
+            return
+        selected = self.pack_review_tree.selection()
+        if not selected:
+            messagebox.showinfo("No Selection", "Select one or more rows to ignore.")
+            return
+
+        for iid in selected:
+            self.pack_review_tree.delete(iid)
+            self.pack_review_row_data.pop(iid, None)
+
+        count = len(selected)
+        self.status_var.set(
+            f"Ignored {count} pack-based line{'s' if count != 1 else ''} — no packs will be ordered."
+        )
+
+    def _on_confirm_pack_review(self):
+        """Confirm the selected Pack Review lines as checked and return them to the
+        main table, carrying the (possibly right-click-adjusted) Recommended Packs
+        value into the main table's Packs to Order column."""
+        if not self.pack_review_tree or not self.tree:
+            return
+        selected = self.pack_review_tree.selection()
+        if not selected:
+            messagebox.showinfo("No Selection", "Select one or more rows to confirm.")
+            return
+
+        for iid in selected:
+            self._insert_main_row(
+                self.pack_review_tree.set(iid, "Product Code"),
+                self.pack_review_tree.set(iid, "Product Name"),
+                self.pack_review_tree.set(iid, "Qty Outstanding"),
+                self.pack_review_tree.set(iid, self.NETO_QTY_SOLD_HEADER),
+                self.pack_review_tree.set(iid, self.RECOMMENDED_PACKS_HEADER),
+            )
+            self.pack_review_tree.delete(iid)
+            self.pack_review_row_data.pop(iid, None)
+
+        # Reattach main-table rows in gw_all_iids order so the returned lines land in
+        # their original pad position rather than being tacked onto the end.
+        self._filter_tree(self.tree)
+
+        count = len(selected)
+        self.status_var.set(
+            f"Confirmed {count} pack-based line{'s' if count != 1 else ''} back to the main table."
+        )
+
+    def _insert_main_row(self, code, name, qty_outstanding, qty_sold, packs_to_order):
+        """Put a row (removed earlier by _apply_neto_stock_data or a Reassign) back
+        into the main table at its original order-pad position. The tree itself is
+        appended to; ordering is restored by placing the new iid at the right spot in
+        gw_all_iids and letting _filter_tree reattach everything in that order."""
+        key = str(code)
+        iid = self.tree.insert(
+            "", "end",
+            values=[str(code), str(name), str(qty_outstanding), str(qty_sold), str(packs_to_order)],
+        )
+        self.main_row_iid[key] = iid
+
+        all_iids = list(getattr(self.tree, "gw_all_iids", []))
+        pad_index = self.main_code_pad_index.get(key)
+        insert_at = len(all_iids)
+        if pad_index is not None:
+            for i, existing in enumerate(all_iids):
+                if not self.tree.exists(existing):
+                    continue
+                existing_idx = self.main_code_pad_index.get(
+                    str(self.tree.set(existing, "Product Code"))
+                )
+                if existing_idx is not None and existing_idx > pad_index:
+                    insert_at = i
+                    break
+        all_iids.insert(insert_at, iid)
+        self.tree.gw_all_iids = all_iids
+
+    def _on_change_recommended_packs(self):
+        """Right-click override for the stock-based recommendation — e.g. order 2
+        packs because demand is unusually high, or 0 because stock is on its way.
+        Applies one number to every ticked line, so a batch of low-stock paints can
+        be set in one go."""
+        if not self.pack_review_tree:
+            return
+        selected = self.pack_review_tree.selection()
+        if not selected:
+            messagebox.showinfo("No Selection", "Tick one or more lines to change their recommended packs.")
+            return
+
+        first = selected[0]
+        try:
+            current = int(self.pack_review_tree.set(first, self.RECOMMENDED_PACKS_HEADER) or 0)
+        except ValueError:
+            current = 0
+
+        if len(selected) == 1:
+            code = self.pack_review_tree.set(first, "Product Code")
+            name = self.pack_review_tree.set(first, "Product Name")
+            prompt = f"Packs to order for {code}{' — ' + name if name else ''}:"
+        else:
+            prompt = f"Packs to order for the {len(selected)} ticked lines:"
+
+        new_value = simpledialog.askinteger(
+            "Change Recommended Packs", prompt,
+            parent=self.root, initialvalue=current, minvalue=0,
+        )
+        if new_value is None:
+            return
+
+        for iid in selected:
+            self.pack_review_tree.set(iid, self.RECOMMENDED_PACKS_HEADER, new_value)
+
+        if len(selected) == 1:
+            self.status_var.set(f"Recommended packs for {code} set to {new_value}.")
+        else:
+            self.status_var.set(f"Recommended packs set to {new_value} for {len(selected)} lines.")
 
     def _set_saved_products_rows(self, rows):
         """(Re)populate the Carried Over From Last Run panel from self.saved_products —
@@ -928,10 +1098,59 @@ class GWOrderTool:
         tree.selection_set(tree.get_children())
         return "break"
 
-    def _enable_row_copy(self, tree):
+    def _has_check_column(self, tree):
+        columns = tree["columns"]
+        return bool(columns) and columns[0] == self.CHECK_HEADER
+
+    def _on_tree_click(self, tree, event):
+        """Clicks on the checkbox column: a row's box toggles just that row in/out of
+        the selection (no Ctrl needed); the column heading ticks all visible rows, or
+        unticks them if everything is already ticked. Clicks anywhere else fall
+        through to ttk's normal selection behaviour."""
+        if not self._has_check_column(tree) or tree.identify_column(event.x) != "#1":
+            return
+        region = tree.identify_region(event.x, event.y)
+
+        if region == "heading":
+            visible = tree.get_children()
+            if visible and set(visible) <= set(tree.selection()):
+                tree.selection_remove(*visible)
+            elif visible:
+                tree.selection_set(visible)
+            return "break"
+
+        if region == "cell":
+            iid = tree.identify_row(event.y)
+            if not iid:
+                return
+            if iid in tree.selection():
+                tree.selection_remove(iid)
+            else:
+                tree.selection_add(iid)
+            return "break"
+
+    def _sync_check_marks(self, tree):
+        """Redraw ☐/☑ to mirror the tree's current selection — runs on every
+        <<TreeviewSelect>>, so ticks stay correct however the selection was made
+        (box click, Ctrl/Shift-click, Ctrl+A, or an action removing rows)."""
+        if not self._has_check_column(tree):
+            return
+        selected = set(tree.selection())
+        for iid in getattr(tree, "gw_all_iids", ()):
+            if tree.exists(iid):
+                tree.set(iid, self.CHECK_HEADER, self.CHECKED if iid in selected else self.UNCHECKED)
+
+    def _enable_row_copy(self, tree, extra_commands=None):
+        """Right-click context menu with Select All / Copy on every table;
+        extra_commands ([(label, callback), ...]) appends table-specific actions —
+        e.g. Change Recommended Packs... on the Pack Review panel."""
         menu = tk.Menu(tree, tearoff=0)
         menu.add_command(label="Select All", command=lambda: self._select_all_rows(tree))
         menu.add_command(label="Copy Product Code", command=lambda: self._copy_selected_codes(tree))
+        if extra_commands:
+            menu.add_separator()
+            for label, callback in extra_commands:
+                menu.add_command(label=label, command=callback)
 
         def show_context_menu(event):
             iid = tree.identify_row(event.y)
@@ -1198,9 +1417,21 @@ class GWOrderTool:
                         self.tree.gw_all_iids = [i for i in self.tree.gw_all_iids if i != main_iid]
                     del self.main_row_iid[new_code]
 
+                    # Stock was scraped under the code the product sold as on Neto (the
+                    # old code) — fall back to the new code, then to unknown (blank
+                    # stock, conservative 1-pack recommendation).
+                    stock = self.neto_stock_lookup.get(str(old_code)) or self.neto_stock_lookup.get(new_code)
+                    if stock is not None:
+                        stock_display = self._format_stock_display(*stock)
+                        recommended = self._recommended_packs(stock[0])
+                    else:
+                        stock_display = ""
+                        recommended = 1
+
                     pack_rows = self._current_pack_review_rows()
                     pack_rows.append((
-                        new_code, product_name, qty_outstanding, new_qty, qty_in_pack, packs_to_order,
+                        new_code, product_name, qty_outstanding, new_qty,
+                        stock_display, qty_in_pack, recommended,
                     ))
                     self._set_pack_review_rows(pack_rows)
                 else:
@@ -1344,16 +1575,34 @@ class GWOrderTool:
 
         self._apply_neto_stock_data(sku_summary)
 
+    @classmethod
+    def _recommended_packs(cls, stock_available):
+        """Stock-based pack recommendation: pack products are ordered to keep shelf
+        stock topped up, not to match units sold — sellable stock already accounts for
+        what's reserved by pending orders. At or below LOW_STOCK_THRESHOLD sellable
+        units, recommend 1 pack; above it, nothing needs ordering. The user can
+        override per line via right-click (see _on_change_recommended_packs)."""
+        return 1 if stock_available <= cls.LOW_STOCK_THRESHOLD else 0
+
+    @staticmethod
+    def _format_stock_display(stock_available, stock_on_hand):
+        """Mirror Neto's own 'Stock: 4 (5)' style — sellable stock first, physical
+        on-hand stock in brackets only when it differs (i.e. some is reserved)."""
+        if stock_on_hand is not None and stock_on_hand != stock_available:
+            return f"{stock_available} ({stock_on_hand})"
+        return str(stock_available)
+
     def _apply_neto_stock_data(self, sku_summary):
         """For every SKU sold on Neto since last Tuesday, show the qty sold in its own
         column for review, plus how many whole packs that works out to (rounded up —
         e.g. 12 units sold at 6/pack = 2 packs). Qty Outstanding is left exactly as it
         was before the fetch — deliberately NOT auto-added here, so it can be checked
         first. Products sold in packs of more than one, with more than 1 unit sold on
-        Neto, are pulled OUT of the main table and into the Pack Review panel instead,
-        since pack-based ordering needs a manual double-check rather than trusting the
-        rounded-up calculation blindly. SKUs that don't exist in this week's table at
-        all are surfaced in the Unmatched Product Codes panel."""
+        Neto, are pulled OUT of the main table and into the Pack Review panel instead;
+        there the recommendation is based on current sellable stock rather than qty
+        sold (see _recommended_packs), and each line is confirmed or ignored manually.
+        SKUs that don't exist in this week's table at all are surfaced in the
+        Unmatched Product Codes panel."""
         self.neto_fetch_done = True
         unmatched = []
         pack_review_rows = []
@@ -1367,6 +1616,17 @@ class GWOrderTool:
             if qty_needed <= 0:
                 continue
             product_name = entry.get("product_name", "")
+
+            try:
+                stock_available = int(entry.get("stock_available_to_sell", entry.get("stock", 0)) or 0)
+            except (TypeError, ValueError):
+                stock_available = 0
+            try:
+                raw_on_hand = entry.get("stock_on_hand")
+                stock_on_hand = int(raw_on_hand) if raw_on_hand is not None else None
+            except (TypeError, ValueError):
+                stock_on_hand = None
+            self.neto_stock_lookup[sku] = (stock_available, stock_on_hand)
 
             main_iid = self.main_row_iid.get(sku)
             if main_iid is None:
@@ -1383,7 +1643,9 @@ class GWOrderTool:
                 # than leaving a possibly-misleading auto-computed number in place.
                 qty_outstanding = self.tree.set(main_iid, "Qty Outstanding")
                 pack_review_rows.append((
-                    sku, product_name, qty_outstanding, qty_needed, qty_in_pack, packs_to_order,
+                    sku, product_name, qty_outstanding, qty_needed,
+                    self._format_stock_display(stock_available, stock_on_hand),
+                    qty_in_pack, self._recommended_packs(stock_available),
                 ))
                 self.tree.delete(main_iid)
                 if hasattr(self.tree, "gw_all_iids"):
@@ -1420,6 +1682,11 @@ class GWOrderTool:
                 tree.delete(iid)
         tree.delete(*tree.get_children())
 
+        # Bulk-select checkbox column always comes first — callers pass headers/rows
+        # without it and never need to know it exists (all cell access is by column
+        # name, so prepending doesn't shift anything).
+        headers = [self.CHECK_HEADER] + list(headers)
+
         tree["columns"] = headers
         for h in headers:
             tree.heading(h, text=h)
@@ -1428,7 +1695,7 @@ class GWOrderTool:
 
         iids = []
         for row in data_rows:
-            values = [str(v) if v is not None else "" for v in row]
+            values = [self.UNCHECKED] + [str(v) if v is not None else "" for v in row]
             iids.append(tree.insert("", "end", values=values))
         tree.gw_all_iids = iids
 
@@ -1484,7 +1751,7 @@ class GWOrderTool:
             try:
                 tree.column(h, width=min_w + bonus)
             except tk.TclError:
-                # Column may no longer exist if the tree was repopulated mid-resize.
+                # Column may no longer exist if the tree got repopulated mid-resize.
                 pass
 
 

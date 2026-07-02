@@ -268,41 +268,6 @@ def main():
         json.dump(sku_summary, f, indent=2)
     print(f"Saved demand data to {output_path}")
 
-    purchase_orders_url = (
-        "https://www.pcmarket.com.au/_cpanel/report_purchase_orders?"
-        "_ftr_sku=&_ftr_model=&_ftr_restockzero=n&_ftr_restock=y"
-        "&_sb_sortby=SKU&_sb_orderby=1&_ftr_mid=GW&_ftrc_mid=70"
-        "&_ftr_status=Y&_sb_pgnum=1&_sb_limit=500&_ftr_showcols="
-        "&rei40445895=1&rei3236647=1&rei52237633=1&rei10007942=1"
-        "&rei9623367=1&rei298557=1&rei17153192=1&rei347193=1&rei298448=1"
-        "&rei305639=1&rei298429=1&rei21133135=1&rei426327=1&rei348377=1"
-        "&rei434590=1&rei34238381=1&rei298386=1&rei298388=1&rei31158283=1"
-        "&rei36160453=1&rei45839514=1&rei48675267=1&rei298510=1&rei298516=1"
-        "&rei264470=1&rei298517=1&rei298523=1&rei464733=1&rei12598709=1"
-        "&rei15305832=1&rei357515=1&rei26136630=1&rei49598445=1&rei53000102=1"
-        "&rei53000103=1&rei53000101=1&rei305697=1&rei299196=1&rei299195=1"
-        "&rei302750=1&rei272907=2&rei298495=1&rei41155147=1&rei14104963=1"
-        "&rei20428286=1&rei25423350=1&rei403410=1&rei52618791=1&rei52618792=1"
-        "&rei4748299=1&rei50658987=1&rei35119528=1&rei19725281=1&rei52618794=1"
-        "&rei31700662=1&rei298719=1&rei305607=1&rei48085182=1&rei18199992=1"
-        "&rei27209883=1&rei305478=1&rei50713400=1&rei348326=1&rei49000758=1"
-        "&rei10706808=1&rei370147=1&rei23260845=1&rei33875820=1&rei15844211=1"
-        "&rei35822987=1&rei53000108=1&rei35822989=1&rei298314=6&rei302769=1"
-        "&rei303179=1&rei302765=1&rei303128=1&rei303130=1&rei302803=1"
-        "&rei302823=1&rei298322=1&rei302777=1&rei302820=1&rei303160=1"
-        "&rei303161=1&rei466970=1&rei302865=1&rei303243=1&rei303262=1"
-        "&rei303297=1&rei305615=1&rei305616=1&rei305619=1&rei305620=1"
-        "&rei305621=1&rei303296=1&rei304900=1&rei52237636=1&itm_total=98"
-    )
-    driver.execute_script(f"window.open('{purchase_orders_url}', '_blank');")
-    driver.switch_to.window(driver.window_handles[1])
-    WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-    print(f"Tab 2 (Purchase Orders): {driver.title}")
-    driver.switch_to.window(driver.window_handles[0])
-    print(f"Tab 1 (Sales Orders): {driver.title}")
-    driver.switch_to.window(driver.window_handles[0])
-
-    print("Browser is open with 2 tabs.")
     print("Done — leaving the browser open for review.")
 
     # Deliberately not calling driver.quit() and not blocking on input() here. This
