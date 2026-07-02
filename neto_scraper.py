@@ -1,6 +1,5 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -152,11 +151,7 @@ def create_driver():
     chrome_options.add_argument("--profile-directory=Default")
     chrome_options.add_argument("--no-sandbox")
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    chromedriver_path = os.path.join(script_dir, "chromedriver-win64", "chromedriver.exe")
-    service = Service(executable_path=chromedriver_path)
-
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    driver = webdriver.Chrome(options=chrome_options)
     return driver
 
 
