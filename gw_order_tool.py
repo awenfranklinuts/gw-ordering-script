@@ -423,6 +423,12 @@ class GWOrderTool:
 
         refresh_calendar()
 
+    @staticmethod
+    def _panel_title(text):
+        """Panel description strings are 'Main Title — long explanation'; the header
+        label only shows the main title, so strip everything from the em-dash on."""
+        return text.split("—")[0].strip()
+
     def _make_collapsible_panel(self, parent, description, on_toggle=None):
         """Wrap a panel in a manually collapsible header (▼/▶ toggle + description),
         independent of whether the panel currently has data. Used for the three
@@ -442,7 +448,7 @@ class GWOrderTool:
         toggle_btn = ttk.Label(header, text="▼", width=2, style="PanelToggle.TLabel", cursor="hand2")
         toggle_btn.pack(side="left")
         desc_label = ttk.Label(
-            header, text=description, wraplength=380, justify="left", cursor="hand2"
+            header, text=self._panel_title(description), wraplength=380, justify="left", cursor="hand2"
         )
         desc_label.pack(side="left", fill="x", expand=True, padx=(4, 0))
 
@@ -461,7 +467,7 @@ class GWOrderTool:
                 on_toggle()
 
         def set_description(text):
-            desc_label.config(text=text)
+            desc_label.config(text=self._panel_title(text))
 
         outer.gw_is_collapsed = lambda: state["collapsed"]
         toggle_btn.bind("<Button-1>", toggle)

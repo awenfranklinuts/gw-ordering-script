@@ -101,11 +101,86 @@ def build_sales_orders_url(from_date):
     )
 
 
-def scrape_order_lines(driver):
+def _parse_money(text):
+    """Parse '$420.20 AUD' -> 420.20. Returns None if no number found."""
+    match = re.search(r'-?[\d,]+(?:\.\d+)?', text or "")
+    if not match:
+        return None
+    return float(match.group().replace(",", ""))
+
+
+def scrape_order_headers(driver):
+    """Build order_id -> {status, order_total, amount_owed} from the order header
+    card above each order's line items. The sticky column-label bar also uses
+    table.order-header-table, so require the a.oid order-id link to identify real
+    order cards."""
+    headers = {}
+    for table in driver.find_elements(By.CSS_SELECTOR, "div.order-header table.order-header-table"):
+        try:
+            order_id = table.find_element(By.CSS_SELECTOR, "a.oid").text.strip()
+        except Exception:
+            continue
+
+        status = ""
+        try:
+            status = table.find_element(By.CSS_SELECTOR, "td.col-status a").text.strip()
+        except Exception:
+            pass
+
+        order_total = amount_owed = None
+        try:
+            order_total = _parse_money(table.find_element(By.CSS_SELECTOR, "td.col-order-total").text)
+        except Exception:
+            pass
+        try:
+            amount_owed = _parse_money(table.find_element(By.CSS_SELECTOR, "td.col-amount-owed").text)
+        except Exception:
+            pass
+
+        headers[order_id] = {
+            "status": status,
+            "order_total": order_total,
+            "amount_owed": amount_owed,
+        }
+    return headers
+
+
+def order_qualifies(header):
+    """Whether an order's line quantities should count toward demand.
+
+    Every status counts EXCEPT:
+    - Cancelled orders — always excluded.
+    - "New" orders with no payment made: a New order only counts once some
+      payment has been received (amount owed < order total). A New order with
+      nothing paid (owed == total, or unparseable amounts) is excluded."""
+    status = (header.get("status") or "").strip().lower()
+    if status == "cancelled":
+        return False
+    if status == "new":
+        total = header.get("order_total")
+        owed = header.get("amount_owed")
+        if total is None or owed is None:
+            return False
+        return owed < total
+    return True
+
+
+def scrape_order_lines(driver, order_headers=None):
+    """Scrape line items. If order_headers is provided, lines belonging to
+    non-qualifying orders (see order_qualifies) are skipped; lines whose order id
+    is missing from order_headers are kept, since only unpaid New orders are
+    excluded and an unknown header can't prove that."""
     rows = driver.find_elements(By.CSS_SELECTOR, "tr[data-order-id][data-qty]")
     order_lines = []
+    skipped = 0
     for row in rows:
         order_id = row.get_attribute("data-order-id")
+
+        if order_headers is not None:
+            header = order_headers.get(order_id)
+            if header is not None and not order_qualifies(header):
+                skipped += 1
+                continue
         qty = int(row.get_attribute("data-qty") or 0)
 
         sku = ""
@@ -169,6 +244,8 @@ def scrape_order_lines(driver):
                 "stock_on_hand": stock_on_hand,
             })
 
+    if order_headers is not None and skipped:
+        print(f"Excluded {skipped} order lines from Cancelled / unpaid New orders")
     return order_lines
 
 
@@ -257,7 +334,11 @@ def main():
         driver.get(sales_url)
         WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
 
-    order_lines = scrape_order_lines(driver)
+    order_headers = scrape_order_headers(driver)
+    excluded = sum(1 for h in order_headers.values() if not order_qualifies(h))
+    print(f"Found {len(order_headers)} orders on page; {excluded} excluded (Cancelled / New with no payment)")
+
+    order_lines = scrape_order_lines(driver, order_headers)
     print(f"Scraped {len(order_lines)} order lines")
 
     sku_summary = aggregate_by_sku(order_lines)
