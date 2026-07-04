@@ -5,11 +5,24 @@ import calendar
 import json
 import math
 import re
-import subprocess
 import sys
 import os
 import threading
 from datetime import date, timedelta
+
+import neto_scraper
+
+
+def _app_base_dir():
+    """Directory this app stores its own data files in (saved_products.json,
+    sales_order_demand.json). When frozen by PyInstaller (onefile), __file__
+    resolves inside the throwaway temp folder (sys._MEIPASS) that gets
+    re-extracted on every launch, so anything written there would never survive
+    between runs. Using the exe's own folder instead keeps that data next to the
+    app and persists across runs and across the "Carried Over From Last Run" list."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
 
 
 class GWOrderTool:
@@ -73,7 +86,7 @@ class GWOrderTool:
         self.root.geometry("1200x700")
         self.root.minsize(900, 500)
 
-        self.script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.script_dir = _app_base_dir()
         self.saved_products_path = os.path.join(self.script_dir, self.SAVED_PRODUCTS_FILENAME)
         self.saved_products = self._load_saved_products()
         self.saved_products_frame = None
@@ -130,8 +143,9 @@ class GWOrderTool:
 
     @staticmethod
     def _get_last_tuesday():
-        """Mirrors neto_scraper.get_last_tuesday() — kept in sync manually since the GUI
-        launches that script as a separate subprocess rather than importing it.
+        """Mirrors neto_scraper.get_last_tuesday() — kept as a separate copy here so
+        the date shown in the picker before Fetch Stock from Neto runs doesn't
+        require importing neto_scraper just for this one helper.
         Tuesday of the week *before* the current one (weeks run Mon–Sun), e.g. run on
         Thursday 2/7 -> current week is Mon 29/6-Sun 5/7, so this returns 23/6."""
         today = date.today()
@@ -1627,67 +1641,57 @@ class GWOrderTool:
         self.status_var.set(text)
 
     def _run_neto_scraper(self):
-        script_path = os.path.join(self.script_dir, "neto_scraper.py")
-        from_date_str = self._format_date(self.neto_from_date)
-        login_prompt_shown = False
-        try:
-            # "-u" forces the child to run with unbuffered stdout. Without it, Python
-            # fully buffers stdout when it's a pipe (not a terminal), so print() lines
-            # like "Not logged in to Neto yet." can sit in the child's buffer for a
-            # while before we ever see them — the Chrome window updates live, but the
-            # status bar here would lag behind and look stuck on stale text.
-            process = subprocess.Popen(
-                [sys.executable, "-u", script_path, "--from-date", from_date_str],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
+        """Runs neto_scraper.run() in-process (this method already executes on a
+        background thread — see _on_fetch_neto) and forwards its progress lines to
+        the status bar, exactly like the old subprocess version did by reading
+        piped stdout. Importing and calling it directly, instead of launching
+        neto_scraper.py as a separate `sys.executable` subprocess, is required for
+        this to work in a frozen exe: once packaged, sys.executable points at the
+        GUI exe itself (not a Python interpreter), so that subprocess call would
+        just relaunch the GUI instead of running the scraper."""
+        login_prompt_shown = {"shown": False}
 
-            self.root.after(0, lambda: self.status_var.set("Checking product barcodes on Neto..."))
+        def emit(line):
+            stripped = (line or "").strip()
 
-            output = []
-            for line in process.stdout:
-                stripped = line.strip()
-                output.append(stripped)
-
-                if stripped.startswith(("Not logged in to Neto", "Please log in using the Chrome window")):
-                    display = "Waiting for you to log in to Neto — a Chrome window is open for you to sign in."
-                    self.root.after(0, lambda d=display: self._set_neto_login_waiting(True, d))
-                elif stripped.startswith("Still waiting for login"):
-                    suffix = stripped.split("...", 1)[1].strip() if "..." in stripped else ""
-                    display = f"Still waiting for you to log in to Neto... {suffix}".strip()
-                    self.root.after(0, lambda d=display: self._set_neto_login_waiting(True, d))
-                elif stripped.startswith("Login detected"):
-                    display = "Login detected — resuming stock check on Neto..."
-                    self.root.after(0, lambda d=display: self._set_neto_login_waiting(False, d))
-                else:
-                    display = f"Checking Neto: {stripped}" if stripped else "Checking product barcodes on Neto..."
-                    self.root.after(0, lambda d=display: self.status_var.set(d))
-
-                if not login_prompt_shown and stripped.startswith("Not logged in to Neto"):
-                    login_prompt_shown = True
+            if stripped.startswith(("Not logged in to Neto", "Please log in using the Chrome window")):
+                display = "Waiting for you to log in to Neto — a Chrome window is open for you to sign in."
+                self.root.after(0, lambda d=display: self._set_neto_login_waiting(True, d))
+                if not login_prompt_shown["shown"] and stripped.startswith("Not logged in to Neto"):
+                    login_prompt_shown["shown"] = True
                     self.root.after(0, lambda: messagebox.showinfo(
                         "Login Required",
                         "You're not logged in to Neto yet.\n\n"
                         "A Chrome window has opened — please log in there. This will "
                         "continue automatically once it detects you're logged in.",
                     ))
-
-            process.wait()
-
-            if process.returncode == 0:
-                self.root.after(0, lambda: self.status_var.set("Neto scraper finished. Applying stock data..."))
-                self.root.after(0, self._load_and_apply_neto_stock_data)
+            elif stripped.startswith("Still waiting for login"):
+                suffix = stripped.split("...", 1)[1].strip() if "..." in stripped else ""
+                display = f"Still waiting for you to log in to Neto... {suffix}".strip()
+                self.root.after(0, lambda d=display: self._set_neto_login_waiting(True, d))
+            elif stripped.startswith("Login detected"):
+                display = "Login detected — resuming stock check on Neto..."
+                self.root.after(0, lambda d=display: self._set_neto_login_waiting(False, d))
             else:
-                last_line = next((l for l in reversed(output) if l), "")
-                self.root.after(0, lambda: self.status_var.set(f"Scraper exited with error (code {process.returncode})"))
-                self.root.after(0, lambda msg=last_line, code=process.returncode: messagebox.showerror(
-                    "Neto Scraper Failed",
-                    msg or f"Scraper exited with error (code {code}).",
-                ))
+                display = f"Checking Neto: {stripped}" if stripped else "Checking product barcodes on Neto..."
+                self.root.after(0, lambda d=display: self.status_var.set(d))
 
+        try:
+            self.root.after(0, lambda: self.status_var.set("Checking product barcodes on Neto..."))
+
+            neto_scraper.run(from_date=self.neto_from_date, on_progress=emit)
+
+            self.root.after(0, lambda: self.status_var.set("Neto scraper finished. Applying stock data..."))
+            self.root.after(0, self._load_and_apply_neto_stock_data)
+
+        except RuntimeError as e:
+            # e.g. login timeout — a known, user-facing condition (see
+            # neto_scraper.ensure_logged_in), not an unexpected crash.
+            self.root.after(0, lambda: self.status_var.set(f"Neto scraper failed: {e}"))
+            self.root.after(0, lambda msg=str(e): messagebox.showerror("Neto Scraper Failed", msg))
         except Exception as e:
             self.root.after(0, lambda: self.status_var.set(f"Error: {e}"))
+            self.root.after(0, lambda msg=str(e): messagebox.showerror("Neto Scraper Failed", msg))
 
         self.root.after(0, lambda: self.neto_btn.config(state="normal"))
         self.root.after(0, lambda: self._set_neto_checking(False))

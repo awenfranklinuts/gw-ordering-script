@@ -13,10 +13,33 @@ import re
 import sys
 import time
 
-SCRAPER_PROFILE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chrome_scraper_profile")
+def _base_dir():
+    """Directory this app stores its own data in (chrome profile, demand json).
+
+    When frozen by PyInstaller (onefile), __file__ resolves inside the throwaway
+    temp folder (sys._MEIPASS) that's re-extracted on every launch — anything
+    written there (like the Chrome login profile) would vanish the moment the
+    app closes, forcing a fresh login every single run. Using the exe's own
+    folder instead keeps that data next to the app and persists across runs."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+SCRAPER_PROFILE_DIR = os.path.join(_base_dir(), "chrome_scraper_profile")
 
 LOGIN_WAIT_TIMEOUT = 300  # seconds to wait for the user to log in before giving up
 LOGIN_POLL_INTERVAL = 3
+
+
+def _default_emit(msg):
+    """Fallback progress reporter for standalone CLI use. Never used when the GUI
+    calls run() directly with its own on_progress callback — and must not be, since
+    a frozen windowed (console=False) exe has no real stdout and print() would raise."""
+    try:
+        print(msg)
+    except Exception:
+        pass
 
 
 def _looks_like_login_page(driver):
@@ -28,7 +51,7 @@ LOGIN_REDIRECT_SETTLE_TIMEOUT = 2  # seconds to allow for a delayed/client-side 
 LOGIN_REDIRECT_SETTLE_POLL = 0.5
 
 
-def ensure_logged_in(driver, sales_url):
+def ensure_logged_in(driver, sales_url, emit=_default_emit):
     """Detect whether the scraper profile is actually logged in to Neto. If the sales
     orders page redirected to the Maropost login screen, pause here and wait for the
     user to log in in the visible browser window, polling until it succeeds or times out.
@@ -46,19 +69,19 @@ def ensure_logged_in(driver, sales_url):
     if not _looks_like_login_page(driver):
         return
 
-    print("Not logged in to Neto yet.")
-    print("Please log in using the Chrome window that just opened — waiting for you to finish...")
+    emit("Not logged in to Neto yet.")
+    emit("Please log in using the Chrome window that just opened — waiting for you to finish...")
 
     waited = 0
     while waited < LOGIN_WAIT_TIMEOUT:
         time.sleep(LOGIN_POLL_INTERVAL)
         waited += LOGIN_POLL_INTERVAL
         if not _looks_like_login_page(driver):
-            print("Login detected — continuing.")
+            emit("Login detected — continuing.")
             driver.get(sales_url)
             WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             return
-        print(f"Still waiting for login... ({waited}s elapsed)")
+        emit(f"Still waiting for login... ({waited}s elapsed)")
 
     raise RuntimeError("Timed out waiting for login. Please log in and click Fetch Stock from Neto again.")
 
@@ -165,7 +188,7 @@ def order_qualifies(header):
     return True
 
 
-def scrape_order_lines(driver, order_headers=None):
+def scrape_order_lines(driver, order_headers=None, emit=_default_emit):
     """Scrape line items. If order_headers is provided, lines belonging to
     non-qualifying orders (see order_qualifies) are skipped; lines whose order id
     is missing from order_headers are kept, since only unpaid New orders are
@@ -245,7 +268,7 @@ def scrape_order_lines(driver, order_headers=None):
             })
 
     if order_headers is not None and skipped:
-        print(f"Excluded {skipped} order lines from Cancelled / unpaid New orders")
+        emit(f"Excluded {skipped} order lines from Cancelled / unpaid New orders")
     return order_lines
 
 
@@ -276,12 +299,16 @@ def aggregate_by_sku(order_lines):
     return result
 
 
-def create_driver():
+def create_driver(profile_dir=None):
     chrome_options = Options()
-    chrome_options.add_argument(f"--user-data-dir={SCRAPER_PROFILE_DIR}")
+    chrome_options.add_argument(f"--user-data-dir={profile_dir or SCRAPER_PROFILE_DIR}")
     chrome_options.add_argument("--profile-directory=Default")
     chrome_options.add_argument("--no-sandbox")
 
+    # No executable_path/Service is passed here on purpose: Selenium Manager (built
+    # into Selenium 4.6+) auto-detects the installed Chrome and downloads a matching
+    # chromedriver itself. That's what lets this run on any device with Chrome
+    # installed, with no manual chromedriver setup or version-matching required.
     driver = webdriver.Chrome(options=chrome_options)
     return driver
 
@@ -297,7 +324,75 @@ def parse_args():
     return parser.parse_args()
 
 
+def run(from_date=None, on_progress=None):
+    """Run the full Neto scrape and return the per-SKU demand summary.
+
+    on_progress, if given, is called with each progress line instead of print() —
+    this is what lets the GUI import this module directly and call run() in a
+    background thread (see gw_order_tool.py's _run_neto_scraper), rather than
+    launching this file as a subprocess via sys.executable. That subprocess
+    approach broke once packaged into a frozen exe, since sys.executable then
+    points at the exe itself rather than a Python interpreter. Calling run()
+    in-process also means print() is never hit in a frozen windowed (console=False)
+    build, where sys.stdout is None and print() would raise.
+    """
+    emit = on_progress or _default_emit
+
+    last_tue = get_last_tuesday()
+    resolved_from_date = from_date or last_tue
+
+    emit("Starting Chrome with scraper profile...")
+    emit("You can keep your normal Chrome open.")
+
+    base_dir = _base_dir()
+    profile_dir = os.path.join(base_dir, "chrome_scraper_profile")
+    if not os.path.exists(profile_dir):
+        emit("First run — please log in to Neto when the browser opens.")
+        emit("Your session will be saved for future runs.")
+
+    driver = create_driver(profile_dir)
+
+    sales_url = build_sales_orders_url(resolved_from_date)
+    date_note = "last Tuesday" if resolved_from_date == last_tue else "custom date"
+    emit(f"Filtering sales orders from: {resolved_from_date.strftime('%d/%m/%Y')} ({date_note})")
+
+    emit("Loading Neto sales orders page...")
+    driver.get(sales_url)
+    WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+
+    ensure_logged_in(driver, sales_url, emit)
+
+    if "app.maropost.com" in driver.current_url:
+        emit("Redirected to Maropost dashboard, navigating back...")
+        driver.get(sales_url)
+        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+
+    order_headers = scrape_order_headers(driver)
+    excluded = sum(1 for h in order_headers.values() if not order_qualifies(h))
+    emit(f"Found {len(order_headers)} orders on page; {excluded} excluded (Cancelled / New with no payment)")
+
+    order_lines = scrape_order_lines(driver, order_headers, emit)
+    emit(f"Scraped {len(order_lines)} order lines")
+
+    sku_summary = aggregate_by_sku(order_lines)
+    emit(f"Aggregated into {len(sku_summary)} unique SKUs")
+
+    output_path = os.path.join(base_dir, "sales_order_demand.json")
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(sku_summary, f, indent=2)
+    emit(f"Saved demand data to {output_path}")
+
+    emit("Done — leaving the browser open for review.")
+
+    # Deliberately not calling driver.quit() here — leaving Chrome open lets the
+    # user glance over the scraped orders themselves if something looks off.
+    return sku_summary
+
+
 def main():
+    """Standalone CLI entry point — useful for testing this file on its own
+    (e.g. `python neto_scraper.py --from-date 01/01/2026`). The GUI does not use
+    this; it imports run() directly instead."""
     args = parse_args()
 
     last_tue = get_last_tuesday()
@@ -310,54 +405,7 @@ def main():
     else:
         from_date = last_tue
 
-    print("Starting Chrome with scraper profile...")
-    print("You can keep your normal Chrome open.")
-
-    if not os.path.exists(SCRAPER_PROFILE_DIR):
-        print("First run — please log in to Neto when the browser opens.")
-        print("Your session will be saved for future runs.")
-
-    driver = create_driver()
-
-    sales_url = build_sales_orders_url(from_date)
-    date_note = "last Tuesday" if from_date == last_tue else "custom date"
-    print(f"Filtering sales orders from: {from_date.strftime('%d/%m/%Y')} ({date_note})")
-
-    print("Loading Neto sales orders page...")
-    driver.get(sales_url)
-    WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-
-    ensure_logged_in(driver, sales_url)
-
-    if "app.maropost.com" in driver.current_url:
-        print("Redirected to Maropost dashboard, navigating back...")
-        driver.get(sales_url)
-        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-
-    order_headers = scrape_order_headers(driver)
-    excluded = sum(1 for h in order_headers.values() if not order_qualifies(h))
-    print(f"Found {len(order_headers)} orders on page; {excluded} excluded (Cancelled / New with no payment)")
-
-    order_lines = scrape_order_lines(driver, order_headers)
-    print(f"Scraped {len(order_lines)} order lines")
-
-    sku_summary = aggregate_by_sku(order_lines)
-    print(f"Aggregated into {len(sku_summary)} unique SKUs")
-
-    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sales_order_demand.json")
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(sku_summary, f, indent=2)
-    print(f"Saved demand data to {output_path}")
-
-    print("Done — leaving the browser open for review.")
-
-    # Deliberately not calling driver.quit() and not blocking on input() here. This
-    # script is launched as a subprocess by the GUI tool with the real Terminal's
-    # stdin inherited, so input() would hang forever waiting for a keypress in a
-    # window nobody's looking at — the GUI would never see the process finish, and
-    # the fetched data would never get applied to the table. The data we care about
-    # (sales_order_demand.json) is already written by this point, so it's safe to
-    # just exit and leave Chrome open for manual review.
+    run(from_date=from_date, on_progress=print)
 
 
 if __name__ == "__main__":
