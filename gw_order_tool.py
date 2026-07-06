@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import openpyxl
 import calendar
+import copy
 import json
 import math
 import re
@@ -131,6 +132,15 @@ class GWOrderTool:
         self.neto_from_date = self._get_last_tuesday()
         self.neto_btn = None
 
+        # Undo/redo for the row-level actions on the working screen (Ignore, Reassign,
+        # Save for Next Order, Confirm/Ignore Pack Review, Change Recommended/Packs to
+        # Order) — see the "Undo / Redo" section near _push_undo for how these work.
+        self.undo_stack = []
+        self.redo_stack = []
+        self._restoring_state = False
+        self.undo_btn = None
+        self.redo_btn = None
+
         self._setup_styles()
         self._build_top_bar()
         self._build_file_selection_frame()
@@ -208,7 +218,21 @@ class GWOrderTool:
     def _build_top_bar(self):
         bar = ttk.Frame(self.root)
         bar.pack(fill="x", padx=10, pady=(10, 0))
+        # Packed right-to-left: Start Over first so it stays the outermost/rightmost
+        # button, with Undo/Redo immediately to its left.
         ttk.Button(bar, text="Start Over", command=self._start_over).pack(side="right")
+        self.redo_btn = ttk.Button(bar, text="Redo", command=self._on_redo, state="disabled")
+        self.redo_btn.pack(side="right", padx=(0, 8))
+        self.undo_btn = ttk.Button(bar, text="Undo", command=self._on_undo, state="disabled")
+        self.undo_btn.pack(side="right", padx=(0, 4))
+
+        self.root.bind_all("<Control-z>", lambda e: self._on_undo())
+        self.root.bind_all("<Command-z>", lambda e: self._on_undo())
+        self.root.bind_all("<Control-y>", lambda e: self._on_redo())
+        self.root.bind_all("<Control-Z>", lambda e: self._on_redo())
+        self.root.bind_all("<Command-Z>", lambda e: self._on_redo())
+        self.root.bind_all("<Control-Shift-z>", lambda e: self._on_redo())
+        self.root.bind_all("<Command-Shift-z>", lambda e: self._on_redo())
 
     def _build_file_selection_frame(self):
         frame = ttk.LabelFrame(self.root, text="Select Files", padding=10)
@@ -336,6 +360,7 @@ class GWOrderTool:
         self.saved_products_row_data = {}
         self.neto_from_date = self._get_last_tuesday()
         self.neto_date_var.set(self._format_date(self.neto_from_date))
+        self._clear_undo_history()
 
         # Tear down the results area built up by Reconcile/Compare/Fetch.
         if self.table_container:
@@ -355,6 +380,142 @@ class GWOrderTool:
 
         self._build_bottom_frame()
         self.status_var.set("Ready. Select last week's Order Pad and Order Confirmation to begin.")
+
+    # --- Undo / Redo -------------------------------------------------------
+    # Covers every row-level action on the working screen — Ignore, Reassign, Save
+    # for Next Order, Confirm/Ignore Pack Review, Change Recommended Packs, Change
+    # Packs to Order — by snapshotting the four tables (main, Unmatched, Pack
+    # Review, Carried Over) plus their backing lookups before each action mutates
+    # anything, rather than hand-writing an inverse for each handler.
+    #
+    # Deliberately NOT covered: Reconcile Orders, Compare Orders, Fetch Stock from
+    # Neto, and Confirm Final List. Those are one-way workflow steps (a network
+    # call or a write to the Order Pad file on disk) that tear down and rebuild
+    # the whole screen — Start Over already exists for backing out of those, and
+    # the undo/redo history is cleared whenever one of them runs, since the old
+    # snapshots would otherwise point at tree widgets that no longer exist.
+
+    def _capture_tree(self, tree):
+        """Read a tree's full row set (including rows hidden by an active search
+        filter) back out as plain (columns, rows) data — the checkbox column is
+        dropped since it's just a mirror of selection state, not real data."""
+        if tree is None:
+            return None
+        columns = list(tree["columns"])
+        if columns and columns[0] == self.CHECK_HEADER:
+            columns = columns[1:]
+        rows = [
+            tuple(tree.set(iid, c) for c in columns)
+            for iid in getattr(tree, "gw_all_iids", ())
+            if tree.exists(iid)
+        ]
+        return {"columns": columns, "rows": rows}
+
+    def _restore_tree(self, tree, snapshot, code_column="Product Code"):
+        """Repopulate tree from a captured snapshot and return {code: iid} for every
+        restored row — used to rebuild main_row_iid, which is keyed by product code."""
+        if tree is None or snapshot is None:
+            return {}
+        cols, rows = snapshot["columns"], snapshot["rows"]
+        iids = self._populate_tree(tree, cols, rows)
+        if code_column not in cols:
+            return {}
+        idx = cols.index(code_column)
+        return {row[idx]: iid for row, iid in zip(rows, iids)}
+
+    def _restore_panel_tree(self, tree, snapshot, attr_name, qty_is_last_column=False):
+        """Repopulate a side-panel tree (Unmatched/Pack Review) and rebuild its
+        iid -> {code, name[, qty]} row_data dict to match — mirrors what
+        _set_unmatched_rows/_set_pack_review_rows build when populating fresh."""
+        if tree is None or snapshot is None:
+            return
+        cols, rows = snapshot["columns"], snapshot["rows"]
+        iids = self._populate_tree(tree, cols, rows)
+        code_idx = cols.index("Product Code") if "Product Code" in cols else 0
+        name_idx = cols.index("Product Name") if "Product Name" in cols else None
+        row_data = {}
+        for iid, row in zip(iids, rows):
+            entry = {"code": row[code_idx], "name": row[name_idx] if name_idx is not None else ""}
+            if qty_is_last_column:
+                entry["qty"] = row[-1]
+            row_data[iid] = entry
+        setattr(self, attr_name, row_data)
+
+    def _capture_state(self):
+        return {
+            "status": self.status_var.get(),
+            "saved_products": copy.deepcopy(self.saved_products),
+            "outstanding_lookup": dict(self.outstanding_lookup),
+            "qty_in_pack_lookup": dict(self.qty_in_pack_lookup),
+            "neto_stock_lookup": copy.deepcopy(self.neto_stock_lookup),
+            "unmatched_target_column": self.unmatched_target_column,
+            "main_tree": self._capture_tree(self.tree),
+            "unmatched_tree": self._capture_tree(self.unmatched_tree),
+            "pack_review_tree": self._capture_tree(self.pack_review_tree),
+        }
+
+    def _restore_state(self, snapshot):
+        # Guards _push_undo so that repainting the trees during restore doesn't
+        # itself get treated as a new undoable action.
+        self._restoring_state = True
+        try:
+            self.saved_products = copy.deepcopy(snapshot["saved_products"])
+            self.outstanding_lookup = dict(snapshot["outstanding_lookup"])
+            self.qty_in_pack_lookup = dict(snapshot["qty_in_pack_lookup"])
+            self.neto_stock_lookup = copy.deepcopy(snapshot["neto_stock_lookup"])
+            self.unmatched_target_column = snapshot["unmatched_target_column"]
+
+            if self.saved_products_tree is not None:
+                self._set_saved_products_rows(self.saved_products)
+
+            self._restore_panel_tree(
+                self.unmatched_tree, snapshot["unmatched_tree"], "unmatched_row_data",
+                qty_is_last_column=True,
+            )
+            self._restore_panel_tree(
+                self.pack_review_tree, snapshot["pack_review_tree"], "pack_review_row_data",
+            )
+            self.main_row_iid = self._restore_tree(self.tree, snapshot["main_tree"])
+
+            self._sync_paned_layout()
+            self.status_var.set(snapshot["status"])
+        finally:
+            self._restoring_state = False
+
+    def _push_undo(self):
+        """Call once a row-level action's own validation has passed and it's about
+        to actually mutate something — so a cancelled dialog or a "no rows
+        selected" warning doesn't clutter the stack with a no-op snapshot."""
+        if self._restoring_state:
+            return
+        self.undo_stack.append(self._capture_state())
+        self.redo_stack.clear()
+        self._update_undo_redo_buttons()
+
+    def _clear_undo_history(self):
+        self.undo_stack = []
+        self.redo_stack = []
+        self._update_undo_redo_buttons()
+
+    def _update_undo_redo_buttons(self):
+        if self.undo_btn is not None:
+            self.undo_btn.config(state="normal" if self.undo_stack else "disabled")
+        if self.redo_btn is not None:
+            self.redo_btn.config(state="normal" if self.redo_stack else "disabled")
+
+    def _on_undo(self):
+        if not self.undo_stack:
+            return
+        self.redo_stack.append(self._capture_state())
+        self._restore_state(self.undo_stack.pop())
+        self._update_undo_redo_buttons()
+
+    def _on_redo(self):
+        if not self.redo_stack:
+            return
+        self.undo_stack.append(self._capture_state())
+        self._restore_state(self.redo_stack.pop())
+        self._update_undo_redo_buttons()
 
     def _open_date_picker(self):
         """Small self-contained month-calendar popup for picking Neto's 'Date Placed From'
@@ -670,6 +831,7 @@ class GWOrderTool:
             messagebox.showerror("Error", f"Failed to load Order Confirmation:\n{e}")
 
     def _refresh_view(self):
+        self._clear_undo_history()
         if self.table_container:
             self.table_container.destroy()
         if self.bottom_frame:
@@ -716,6 +878,7 @@ class GWOrderTool:
         self.neto_progress = ttk.Progressbar(self.bottom_frame, mode="indeterminate", length=160)
 
     def _show_outstanding_view(self):
+        self._clear_undo_history()
         if self.table_container:
             self.table_container.destroy()
 
@@ -918,6 +1081,7 @@ class GWOrderTool:
             messagebox.showinfo("No Selection", "Select one or more rows to ignore.")
             return
 
+        self._push_undo()
         for iid in selected:
             self._insert_main_row(
                 self.pack_review_tree.set(iid, "Product Code"),
@@ -950,6 +1114,7 @@ class GWOrderTool:
             messagebox.showinfo("No Selection", "Select one or more rows to confirm.")
             return
 
+        self._push_undo()
         for iid in selected:
             # Confirmed lines order their recommendation on top of last week's
             # shortfall: Packs to Order = Recommended Packs + Qty Outstanding.
@@ -1042,6 +1207,7 @@ class GWOrderTool:
         if new_value is None:
             return
 
+        self._push_undo()
         for iid in selected:
             self.pack_review_tree.set(iid, self.RECOMMENDED_PACKS_HEADER, new_value)
 
@@ -1081,6 +1247,7 @@ class GWOrderTool:
         if new_value is None:
             return
 
+        self._push_undo()
         for iid in selected:
             self.tree.set(iid, self.PACKS_TO_ORDER_HEADER, new_value)
 
@@ -1294,6 +1461,7 @@ class GWOrderTool:
             messagebox.showinfo("No Selection", "Select one or more rows to ignore.")
             return
 
+        self._push_undo()
         for iid in selected:
             self.unmatched_tree.delete(iid)
             self.unmatched_row_data.pop(iid, None)
@@ -1311,6 +1479,7 @@ class GWOrderTool:
             messagebox.showinfo("No Selection", "Select one or more rows to save for next time.")
             return
 
+        self._push_undo()
         today_str = date.today().isoformat()
         saved_lookup = {str(item.get("code")): item for item in self.saved_products}
 
@@ -1362,6 +1531,7 @@ class GWOrderTool:
             messagebox.showinfo("No Selection", "Select one or more rows to ignore.")
             return
 
+        self._push_undo()
         codes_to_remove = {
             str(self.saved_products_row_data[iid].get("code"))
             for iid in selected if iid in self.saved_products_row_data
@@ -1534,6 +1704,7 @@ class GWOrderTool:
                 )
                 return
 
+            self._push_undo()
             if is_packs_mode:
                 # Carried-over reassign — ADD the qty onto the target row's existing
                 # Packs to Order (e.g. 10 already there + 5 carried over = 15), no
@@ -1750,6 +1921,7 @@ class GWOrderTool:
         sold (see _recommended_packs), and each line is confirmed or ignored manually.
         SKUs that don't exist in this week's table at all are surfaced in the
         Unmatched Product Codes panel."""
+        self._clear_undo_history()
         self.neto_fetch_done = True
         unmatched = []
         pack_review_rows = []
@@ -1967,6 +2139,7 @@ class GWOrderTool:
                 self.tree.set(iid, self.PACKS_TO_ORDER_HEADER),
             ))
 
+        self._clear_undo_history()
         if self.table_container:
             self.table_container.destroy()
         # Drop all references to the old panels so _sync_paned_layout and the panel
