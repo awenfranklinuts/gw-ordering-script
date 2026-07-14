@@ -1724,7 +1724,10 @@ class GWOrderTool:
                     qty_in_pack = 1
                 packs_to_order = math.ceil(new_qty / qty_in_pack)
 
-                if qty_in_pack > 1 and new_qty > 1:
+                # If the qty sold fits inside a single pack (pack size > qty sold),
+                # skip Pack Review and order 1 pack automatically — review is only
+                # needed once a full pack or more has sold (2+ packs would be ordered).
+                if qty_in_pack > 1 and new_qty >= qty_in_pack:
                     qty_outstanding = self.tree.set(main_iid, "Qty Outstanding")
                     product_name = self.tree.set(main_iid, "Product Name")
                     self.tree.delete(main_iid)
