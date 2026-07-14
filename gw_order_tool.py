@@ -40,16 +40,41 @@ class GWOrderTool:
     PACKS_TO_ORDER_HEADER = "Packs to Order"
     SELLABLE_STOCK_HEADER = "Sellable Stock"
     RECOMMENDED_PACKS_HEADER = "Recommended Packs to Order"
-    # Sellable stock on Neto at or below this means the shelf is running low and one
-    # pack should be reordered — see _recommended_packs().
-    LOW_STOCK_THRESHOLD = 2
+    # Deficit-clearing buffer for individual (non-pack) products: when sellable
+    # stock is negative, order enough to bring it back up to this level (e.g.
+    # stock -13 -> order 14). Stock already nets out every open order regardless
+    # of when it was placed, so this alone is the driver in that case — Qty
+    # Outstanding isn't added on top (see the non-negative branch below for when
+    # it does count).
+    TARGET_STOCK_LEVEL = 1
+    # When stock ISN'T negative, replenish Qty Outstanding + Qty Sold on Neto as
+    # normal, but capped at this many units per week — a one-off high-velocity
+    # sale (e.g. 5 sold in a week) shouldn't fully replenish and over-order;
+    # normal weekly movement (1-2 units) replenishes in full. Override rare
+    # exceptions via right-click (Change Packs to Order.../Change Recommended
+    # Packs...) rather than changing this default.
+    REPLENISH_CAP = 2
+    # Pack products (qty in pack > 1, e.g. paints sold in packs of 6) want a bigger
+    # buffer since restocking only happens once a week and a whole pack arrives at
+    # once: reorder a pack once sellable stock drops to this level or below (e.g.
+    # stock at or under 2 -> order one more pack), rather than running down to 1
+    # like an individual item would.
+    PACK_LOW_STOCK_THRESHOLD = 2
+    # Cap on Recommended Packs to Order for the everyday low-stock case (sellable
+    # stock at or below PACK_LOW_STOCK_THRESHOLD but not negative) — same principle
+    # as REPLENISH_CAP above. Does NOT apply once stock actually goes negative:
+    # that's a real backorder deficit, and gets cleared in full regardless of size
+    # (e.g. stock -50 still orders enough packs to clear it), same as individual
+    # items.
+    PACK_REPLENISH_CAP = 3
     PACK_REVIEW_DESC = (
-        "Pack-Based Products Needing Review — sold in packs of more than one. "
-        "Recommended Packs to Order is based on current sellable stock (1 pack when sellable "
-        "stock is 2 or less), not on qty sold. Sellable Stock shows on-hand stock in "
+        "Pack-Based Products Needing Review — sold in packs of more than one, "
+        "any qty sold on Neto this week. Recommended Packs to Order brings current sellable stock back above "
+        "PACK_LOW_STOCK_THRESHOLD, not a 1:1 match of qty sold. Sellable Stock shows on-hand stock in "
         "brackets when they differ. Tick one or more lines, right-click to change "
         "their recommendation, then Confirm to send them back to the main table "
-        "(Packs to Order = recommendation + Qty Outstanding), or Ignore to skip "
+        "(Packs to Order = recommendation — stock already reflects any prior "
+        "shortfall), or Ignore to skip "
         "ordering them."
     )
     SAVED_PRODUCTS_DESC = (
@@ -130,6 +155,7 @@ class GWOrderTool:
         # Product Codes is relevant (see _sync_paned_layout()).
         self.neto_fetch_done = False
         self.neto_from_date = self._get_last_tuesday()
+        self.neto_to_date = None  # None = no upper bound (orders up to now)
         self.neto_btn = None
 
         # Undo/redo for the row-level actions on the working screen (Ignore, Reassign,
@@ -165,6 +191,9 @@ class GWOrderTool:
     @staticmethod
     def _format_date(d):
         return d.strftime("%d/%m/%Y")
+
+    def _format_till_date(self):
+        return self._format_date(self.neto_to_date) if self.neto_to_date else "No limit"
 
     def _load_saved_products(self):
         """Load products saved via 'Save for Next Order' in a previous session. Missing
@@ -274,9 +303,10 @@ class GWOrderTool:
             (self.compare_btn, dict(row=4, column=1, pady=(10, 0))),
         ]
 
-        # Neto "Date Placed From" selector — sits to the left of the Fetch Stock from Neto
-        # button. Built here but only gridded once the button is promoted (see
-        # _promote_compare_to_fetch_button), since it's only relevant at that stage.
+        # Neto "Date Placed From"/"Date Placed Till" selectors — sit to the left of the
+        # Fetch Stock from Neto button. Built here but only gridded once the button is
+        # promoted (see _promote_compare_to_fetch_button), since they're only relevant
+        # at that stage. Till defaults to blank/"No limit" (orders up to now).
         self.neto_date_frame = ttk.Frame(frame)
         ttk.Label(self.neto_date_frame, text="Date Placed From:").pack(side="left", padx=(0, 4))
         self.neto_date_var = tk.StringVar(value=self._format_date(self.neto_from_date))
@@ -284,7 +314,19 @@ class GWOrderTool:
             self.neto_date_frame, textvariable=self.neto_date_var, width=11, state="readonly"
         )
         self.neto_date_entry.pack(side="left", padx=(0, 4))
-        ttk.Button(self.neto_date_frame, text="Change...", command=self._open_date_picker).pack(side="left")
+        ttk.Button(
+            self.neto_date_frame, text="Change...", command=lambda: self._open_date_picker("from")
+        ).pack(side="left", padx=(0, 12))
+
+        ttk.Label(self.neto_date_frame, text="Date Placed Till:").pack(side="left", padx=(0, 4))
+        self.neto_to_date_var = tk.StringVar(value=self._format_till_date())
+        self.neto_to_date_entry = ttk.Entry(
+            self.neto_date_frame, textvariable=self.neto_to_date_var, width=11, state="readonly"
+        )
+        self.neto_to_date_entry.pack(side="left", padx=(0, 4))
+        ttk.Button(
+            self.neto_date_frame, text="Change...", command=lambda: self._open_date_picker("till")
+        ).pack(side="left")
 
         frame.columnconfigure(1, weight=1)
 
@@ -360,6 +402,8 @@ class GWOrderTool:
         self.saved_products_row_data = {}
         self.neto_from_date = self._get_last_tuesday()
         self.neto_date_var.set(self._format_date(self.neto_from_date))
+        self.neto_to_date = None
+        self.neto_to_date_var.set(self._format_till_date())
         self._clear_undo_history()
 
         # Tear down the results area built up by Reconcile/Compare/Fetch.
@@ -517,17 +561,22 @@ class GWOrderTool:
         self._restore_state(self.redo_stack.pop())
         self._update_undo_redo_buttons()
 
-    def _open_date_picker(self):
-        """Small self-contained month-calendar popup for picking Neto's 'Date Placed From'
-        filter — no extra dependency (like tkcalendar) required."""
+    def _open_date_picker(self, which="from"):
+        """Small self-contained month-calendar popup for picking Neto's 'Date Placed
+        From' or 'Date Placed Till' filter — no extra dependency (like tkcalendar)
+        required. which is "from" or "till"; both fields share this same picker."""
+        is_till = which == "till"
+        selected_date = self.neto_to_date if is_till else self.neto_from_date
+        anchor_date = selected_date or date.today()
+
         picker = tk.Toplevel(self.root)
-        picker.title("Select Date Placed From")
+        picker.title("Select Date Placed Till" if is_till else "Select Date Placed From")
         picker.transient(self.root)
         picker.grab_set()
         picker.resizable(False, False)
 
-        view_year = tk.IntVar(value=self.neto_from_date.year)
-        view_month = tk.IntVar(value=self.neto_from_date.month)
+        view_year = tk.IntVar(value=anchor_date.year)
+        view_month = tk.IntVar(value=anchor_date.month)
 
         header = ttk.Frame(picker)
         header.pack(fill="x", padx=8, pady=(8, 4))
@@ -537,8 +586,13 @@ class GWOrderTool:
         days_frame.pack(padx=8, pady=(0, 4))
 
         def on_pick(y, m, d):
-            self.neto_from_date = date(y, m, d)
-            self.neto_date_var.set(self._format_date(self.neto_from_date))
+            picked = date(y, m, d)
+            if is_till:
+                self.neto_to_date = picked
+                self.neto_to_date_var.set(self._format_date(picked))
+            else:
+                self.neto_from_date = picked
+                self.neto_date_var.set(self._format_date(picked))
             picker.destroy()
 
         def refresh_calendar():
@@ -550,6 +604,7 @@ class GWOrderTool:
             for col, h in enumerate(["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]):
                 ttk.Label(days_frame, text=h, anchor="center", width=4).grid(row=0, column=col, padx=1, pady=1)
 
+            current = self.neto_to_date if is_till else self.neto_from_date
             cal = calendar.Calendar(firstweekday=0)
             for row, week in enumerate(cal.monthdayscalendar(y, m), start=1):
                 for col, day in enumerate(week):
@@ -557,9 +612,10 @@ class GWOrderTool:
                         ttk.Label(days_frame, text="", width=4).grid(row=row, column=col, padx=1, pady=1)
                         continue
                     is_selected = (
-                        y == self.neto_from_date.year
-                        and m == self.neto_from_date.month
-                        and day == self.neto_from_date.day
+                        current is not None
+                        and y == current.year
+                        and m == current.month
+                        and day == current.day
                     )
                     # Selected day gets both a distinct style AND a text marker — ttk button
                     # background colors are unreliable on some platforms (e.g. macOS Aqua),
@@ -589,11 +645,25 @@ class GWOrderTool:
 
         footer = ttk.Frame(picker)
         footer.pack(fill="x", padx=8, pady=(0, 8))
-        last_tue = self._get_last_tuesday()
-        ttk.Button(
-            footer, text="Last Tuesday",
-            command=lambda: on_pick(last_tue.year, last_tue.month, last_tue.day),
-        ).pack(side="left")
+        if is_till:
+            today = date.today()
+            ttk.Button(
+                footer, text="Today",
+                command=lambda: on_pick(today.year, today.month, today.day),
+            ).pack(side="left")
+
+            def clear_till():
+                self.neto_to_date = None
+                self.neto_to_date_var.set(self._format_till_date())
+                picker.destroy()
+
+            ttk.Button(footer, text="No Limit", command=clear_till).pack(side="left", padx=(6, 0))
+        else:
+            last_tue = self._get_last_tuesday()
+            ttk.Button(
+                footer, text="Last Tuesday",
+                command=lambda: on_pick(last_tue.year, last_tue.month, last_tue.day),
+            ).pack(side="left")
         ttk.Button(footer, text="Cancel", command=picker.destroy).pack(side="right")
 
         refresh_calendar()
@@ -897,12 +967,12 @@ class GWOrderTool:
             seen.add(key)
             self.qty_in_pack_lookup[key] = qty_in_pack
             qty_outstanding = self.outstanding_lookup.get(key, 0)
-            # Qty Sold on Neto and Packs to Order start blank — filled in once Fetch
-            # Stock from Neto runs, see _apply_neto_stock_data(). Qty in Pack isn't
-            # shown as its own column here — it's tracked in qty_in_pack_lookup and
-            # only surfaces indirectly via Packs to Order (and directly in the Pack
-            # Review panel for items that need manual checking).
-            matched_rows.append((product_code, product_name, qty_outstanding, "", ""))
+            # Qty Sold on Neto, Sellable Stock and Packs to Order start blank — filled
+            # in once Fetch Stock from Neto runs, see _apply_neto_stock_data(). Qty in
+            # Pack isn't shown as its own column here — it's tracked in
+            # qty_in_pack_lookup and only surfaces indirectly via Packs to Order (and
+            # directly in the Pack Review panel for items that need manual checking).
+            matched_rows.append((product_code, product_name, qty_outstanding, "", "", ""))
 
         # Codes that had a real order last week but don't appear in this week's pad at all —
         # likely because the barcode/product code or name changed.
@@ -985,12 +1055,15 @@ class GWOrderTool:
         self.tree = self._create_treeview(self.main_table_frame)
         main_iids = self._populate_tree(
             self.tree,
-            ["Product Code", "Product Name", "Qty Outstanding", self.NETO_QTY_SOLD_HEADER, self.PACKS_TO_ORDER_HEADER],
+            [
+                "Product Code", "Product Name", "Qty Outstanding", self.NETO_QTY_SOLD_HEADER,
+                self.SELLABLE_STOCK_HEADER, self.PACKS_TO_ORDER_HEADER,
+            ],
             matched_rows,
         )
         self.main_row_iid = {
             str(code): iid
-            for (code, _name, _qty, _sold, _packs), iid in zip(matched_rows, main_iids)
+            for (code, _name, _qty, _sold, _stock, _packs), iid in zip(matched_rows, main_iids)
         }
         self.main_code_pad_index = {
             str(code): i for i, (code, *_rest) in enumerate(matched_rows)
@@ -1088,6 +1161,7 @@ class GWOrderTool:
                 self.pack_review_tree.set(iid, "Product Name"),
                 self.pack_review_tree.set(iid, "Qty Outstanding"),
                 self.pack_review_tree.set(iid, self.NETO_QTY_SOLD_HEADER),
+                self.pack_review_tree.set(iid, self.SELLABLE_STOCK_HEADER),
                 0,
             )
             self.pack_review_tree.delete(iid)
@@ -1116,17 +1190,17 @@ class GWOrderTool:
 
         self._push_undo()
         for iid in selected:
-            # Confirmed lines order their recommendation on top of last week's
-            # shortfall: Packs to Order = Recommended Packs + Qty Outstanding.
-            packs_to_order = (
-                self._cell_int(self.pack_review_tree, iid, self.RECOMMENDED_PACKS_HEADER)
-                + self._cell_int(self.pack_review_tree, iid, "Qty Outstanding")
-            )
+            # Packs to Order = Recommended Packs, unchanged — current sellable
+            # stock (which the recommendation is based on) already nets out any
+            # unfulfilled shortfall from last week, so Qty Outstanding isn't added
+            # again here.
+            packs_to_order = self._cell_int(self.pack_review_tree, iid, self.RECOMMENDED_PACKS_HEADER)
             self._insert_main_row(
                 self.pack_review_tree.set(iid, "Product Code"),
                 self.pack_review_tree.set(iid, "Product Name"),
                 self.pack_review_tree.set(iid, "Qty Outstanding"),
                 self.pack_review_tree.set(iid, self.NETO_QTY_SOLD_HEADER),
+                self.pack_review_tree.set(iid, self.SELLABLE_STOCK_HEADER),
                 packs_to_order,
             )
             self.pack_review_tree.delete(iid)
@@ -1141,7 +1215,7 @@ class GWOrderTool:
             f"Confirmed {count} pack-based line{'s' if count != 1 else ''} back to the main table."
         )
 
-    def _insert_main_row(self, code, name, qty_outstanding, qty_sold, packs_to_order):
+    def _insert_main_row(self, code, name, qty_outstanding, qty_sold, sellable_stock, packs_to_order):
         """Put a row (removed earlier by _apply_neto_stock_data or a Reassign) back
         into the main table at its original order-pad position. The tree itself is
         appended to; ordering is restored by placing the new iid at the right spot in
@@ -1154,7 +1228,7 @@ class GWOrderTool:
             "", "end",
             values=[
                 self.UNCHECKED, str(code), str(name),
-                str(qty_outstanding), str(qty_sold), str(packs_to_order),
+                str(qty_outstanding), str(qty_sold), str(sellable_stock), str(packs_to_order),
             ],
         )
         self.main_row_iid[key] = iid
@@ -1722,12 +1796,11 @@ class GWOrderTool:
                 qty_in_pack = self.qty_in_pack_lookup.get(new_code, 1)
                 if not isinstance(qty_in_pack, int) or qty_in_pack <= 0:
                     qty_in_pack = 1
-                packs_to_order = math.ceil(new_qty / qty_in_pack)
 
-                # If the qty sold fits inside a single pack (pack size > qty sold),
-                # skip Pack Review and order 1 pack automatically — review is only
-                # needed once a full pack or more has sold (2+ packs would be ordered).
-                if qty_in_pack > 1 and new_qty >= qty_in_pack:
+                # Any sale of a pack product goes to Pack Review, same as a normal
+                # Fetch Stock from Neto — even a single unit sold.
+                if qty_in_pack > 1:
+                    qty_outstanding_int = self._cell_int(self.tree, main_iid, "Qty Outstanding")
                     qty_outstanding = self.tree.set(main_iid, "Qty Outstanding")
                     product_name = self.tree.set(main_iid, "Product Name")
                     self.tree.delete(main_iid)
@@ -1741,7 +1814,7 @@ class GWOrderTool:
                     stock = self.neto_stock_lookup.get(str(old_code)) or self.neto_stock_lookup.get(new_code)
                     if stock is not None:
                         stock_display = self._format_stock_display(*stock)
-                        recommended = self._recommended_packs(stock[0])
+                        recommended = self._recommended_packs(stock[0], qty_in_pack, qty_outstanding_int, new_qty)
                     else:
                         stock_display = ""
                         recommended = 1
@@ -1754,11 +1827,22 @@ class GWOrderTool:
                     self._set_pack_review_rows(pack_rows)
                 else:
                     self.tree.set(main_iid, self.NETO_QTY_SOLD_HEADER, new_qty)
-                    self.tree.set(
-                        main_iid,
-                        self.PACKS_TO_ORDER_HEADER,
-                        packs_to_order + self._cell_int(self.tree, main_iid, "Qty Outstanding"),
-                    )
+                    stock = self.neto_stock_lookup.get(str(old_code)) or self.neto_stock_lookup.get(new_code)
+                    if stock is not None:
+                        self.tree.set(main_iid, self.SELLABLE_STOCK_HEADER, self._format_stock_display(*stock))
+                        # Same rule as a normal Fetch Stock from Neto — see the main
+                        # loop in _apply_neto_stock_data for the reasoning.
+                        qty_outstanding = self._cell_int(self.tree, main_iid, "Qty Outstanding")
+                        if stock[0] < 0:
+                            packs_to_order = -stock[0] + self.TARGET_STOCK_LEVEL
+                        else:
+                            room = self.REPLENISH_CAP - stock[0]
+                            packs_to_order = max(0, min(qty_outstanding + new_qty, room))
+                    else:
+                        # No live stock figure for this code — fall back to the raw
+                        # qty sold as a best-effort estimate.
+                        packs_to_order = math.ceil(new_qty / qty_in_pack)
+                    self.tree.set(main_iid, self.PACKS_TO_ORDER_HEADER, packs_to_order)
             else:
                 self.tree.set(main_iid, "Qty Outstanding", new_qty)
                 self.outstanding_lookup[new_code] = new_qty
@@ -1785,8 +1869,11 @@ class GWOrderTool:
 
         self.neto_btn.config(state="disabled")
         self._set_neto_checking(True)
+        date_range_desc = f"since {self.neto_date_var.get()}"
+        if self.neto_to_date:
+            date_range_desc = f"from {self.neto_date_var.get()} to {self.neto_to_date_var.get()}"
         self.status_var.set(
-            f"Checking product barcodes on Neto (orders placed since {self.neto_date_var.get()}) — please wait..."
+            f"Checking product barcodes on Neto (orders placed {date_range_desc}) — please wait..."
         )
 
         thread = threading.Thread(target=self._run_neto_scraper, daemon=True)
@@ -1853,7 +1940,7 @@ class GWOrderTool:
         try:
             self.root.after(0, lambda: self.status_var.set("Checking product barcodes on Neto..."))
 
-            neto_scraper.run(from_date=self.neto_from_date, on_progress=emit)
+            neto_scraper.run(from_date=self.neto_from_date, to_date=self.neto_to_date, on_progress=emit)
 
             self.root.after(0, lambda: self.status_var.set("Neto scraper finished. Applying stock data..."))
             self.root.after(0, self._load_and_apply_neto_stock_data)
@@ -1896,13 +1983,30 @@ class GWOrderTool:
             return 0
 
     @classmethod
-    def _recommended_packs(cls, stock_available):
-        """Stock-based pack recommendation: pack products are ordered to keep shelf
-        stock topped up, not to match units sold — sellable stock already accounts for
-        what's reserved by pending orders. At or below LOW_STOCK_THRESHOLD sellable
-        units, recommend 1 pack; above it, nothing needs ordering. The user can
-        override per line via right-click (see _on_change_recommended_packs)."""
-        return 1 if stock_available <= cls.LOW_STOCK_THRESHOLD else 0
+    def _recommended_packs(cls, stock_available, qty_in_pack=1, qty_outstanding=0, qty_needed=0):
+        """Reorder-point pack recommendation: pack products (e.g. paints, 6 to a
+        pack) reorder once sellable stock drops to PACK_LOW_STOCK_THRESHOLD or
+        below — stock still comfortably above that doesn't need makeup ordering
+        just because some sold. Negative stock is a real backorder deficit
+        (sellable stock already accounts for what's reserved by pending orders
+        regardless of when those orders were placed) and is cleared in full,
+        uncapped, same as individual items (e.g. stock -13, pack of 6 ->
+        ceil(16/6) = 3 packs; stock -50 -> ceil(53/6) = 9). Otherwise, at or below
+        the threshold: Qty Outstanding (already in packs) + however many whole
+        packs cover Qty Sold on Neto, capped at PACK_REPLENISH_CAP — for a normal
+        sale (under one pack's worth) this is still just 1 pack, same as before,
+        but a high-velocity week (e.g. 13 sold at 6/pack -> ceil(13/6) = 3 packs)
+        now scales with actual demand instead of being flattened to 1. The user
+        can override per line via right-click (see _on_change_recommended_packs)."""
+        if not isinstance(qty_in_pack, int) or qty_in_pack <= 0:
+            qty_in_pack = 1
+        if stock_available < 0:
+            shortfall = cls.PACK_LOW_STOCK_THRESHOLD + 1 - stock_available
+            return math.ceil(shortfall / qty_in_pack)
+        if stock_available > cls.PACK_LOW_STOCK_THRESHOLD:
+            return 0
+        packs_needed = qty_outstanding + math.ceil(qty_needed / qty_in_pack)
+        return min(max(packs_needed, 1), cls.PACK_REPLENISH_CAP)
 
     @staticmethod
     def _format_stock_display(stock_available, stock_on_hand):
@@ -1914,16 +2018,19 @@ class GWOrderTool:
 
     def _apply_neto_stock_data(self, sku_summary):
         """For every SKU sold on Neto since last Tuesday, show the qty sold in its own
-        column for review, and fill Packs to Order = Qty Outstanding + whole packs
-        sold (rounded up — e.g. 12 units sold at 6/pack = 2 packs). Rows with no Neto
-        sales but a Qty Outstanding get that as their Packs to Order, so last week's
-        shortfall is reordered too. Products sold in packs of more than one, with
-        more than 1 unit sold on Neto, are pulled OUT of the main table and into the
-        Pack Review panel instead;
-        there the recommendation is based on current sellable stock rather than qty
-        sold (see _recommended_packs), and each line is confirmed or ignored manually.
-        SKUs that don't exist in this week's table at all are surfaced in the
-        Unmatched Product Codes panel."""
+        column for review, and fill Packs to Order. For individual products: if
+        sellable stock has gone negative, Packs to Order clears that deficit alone
+        (Qty Outstanding not added — the deficit already reflects it); otherwise
+        Packs to Order = Qty Outstanding + Qty Sold on Neto, bounded by whatever
+        room is left below REPLENISH_CAP (stock already at or above the cap orders
+        nothing, regardless of what sold — see the non-pack branch below). Products
+        sold in packs of more than one are always pulled OUT of the main table and
+        into the Pack Review panel instead — any sale at all, even a single unit,
+        since a pack recommendation is worth a human glance before being committed;
+        there the recommendation is based on current sellable stock (see
+        _recommended_packs), and each line is confirmed or ignored manually. SKUs
+        that don't exist in this week's table at all are surfaced in the Unmatched
+        Product Codes panel."""
         self._clear_undo_history()
         self.neto_fetch_done = True
         unmatched = []
@@ -1935,8 +2042,6 @@ class GWOrderTool:
             if not sku:
                 continue
             qty_needed = int(entry.get("total_qty_needed") or 0)
-            if qty_needed <= 0:
-                continue
             product_name = entry.get("product_name", "")
 
             try:
@@ -1950,6 +2055,9 @@ class GWOrderTool:
                 stock_on_hand = None
             self.neto_stock_lookup[sku] = (stock_available, stock_on_hand)
 
+            if qty_needed <= 0:
+                continue
+
             main_iid = self.main_row_iid.get(sku)
             if main_iid is None:
                 unmatched.append((sku, product_name, qty_needed))
@@ -1958,28 +2066,45 @@ class GWOrderTool:
             qty_in_pack = self.qty_in_pack_lookup.get(sku, 1)
             if not isinstance(qty_in_pack, int) or qty_in_pack <= 0:
                 qty_in_pack = 1
-            # Packs to Order = Qty Outstanding (already in packs — column G of last
-            # week's pad counts packs) + whole packs to cover what sold on Neto.
-            packs_to_order = (
-                self._cell_int(self.tree, main_iid, "Qty Outstanding")
-                + math.ceil(qty_needed / qty_in_pack)
-            )
+            qty_outstanding = self._cell_int(self.tree, main_iid, "Qty Outstanding")
 
-            if qty_in_pack > 1 and qty_needed > 1:
+            if qty_in_pack > 1:
                 # Needs manual review — pull it out of the main table entirely rather
                 # than leaving a possibly-misleading auto-computed number in place.
-                qty_outstanding = self.tree.set(main_iid, "Qty Outstanding")
+                # Any sale of a pack product routes here, even a single unit — the
+                # stock-based recommendation still gets computed (see
+                # _recommended_packs), it just needs a human glance before being
+                # committed rather than being auto-applied.
+                qty_outstanding_display = self.tree.set(main_iid, "Qty Outstanding")
                 pack_review_rows.append((
-                    sku, product_name, qty_outstanding, qty_needed,
+                    sku, product_name, qty_outstanding_display, qty_needed,
                     self._format_stock_display(stock_available, stock_on_hand),
-                    qty_in_pack, self._recommended_packs(stock_available),
+                    qty_in_pack,
+                    self._recommended_packs(stock_available, qty_in_pack, qty_outstanding, qty_needed),
                 ))
                 self.tree.delete(main_iid)
                 if hasattr(self.tree, "gw_all_iids"):
                     self.tree.gw_all_iids = [i for i in self.tree.gw_all_iids if i != main_iid]
                 del self.main_row_iid[sku]
             else:
+                # Individual units. Negative stock: deficit-clearing only (Qty
+                # Outstanding not added — the deficit already reflects it), e.g.
+                # stock -1 -> order 2. Otherwise: Qty Outstanding + Qty Sold on
+                # Neto, but never enough to push stock past REPLENISH_CAP — stock
+                # already at or above the cap orders nothing regardless of what
+                # sold (e.g. stock 2, cap 2, 1 sold -> order 0), stock below the
+                # cap only tops up the remaining room (e.g. stock 1, cap 2, 5 sold
+                # -> order 1, landing exactly at the cap rather than overshooting).
+                if stock_available < 0:
+                    packs_to_order = -stock_available + self.TARGET_STOCK_LEVEL
+                else:
+                    room = self.REPLENISH_CAP - stock_available
+                    packs_to_order = max(0, min(qty_outstanding + qty_needed, room))
                 self.tree.set(main_iid, self.NETO_QTY_SOLD_HEADER, qty_needed)
+                self.tree.set(
+                    main_iid, self.SELLABLE_STOCK_HEADER,
+                    self._format_stock_display(stock_available, stock_on_hand),
+                )
                 self.tree.set(main_iid, self.PACKS_TO_ORDER_HEADER, packs_to_order)
 
             updated += 1

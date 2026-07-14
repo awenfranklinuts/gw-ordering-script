@@ -1,8 +1,14 @@
 /chrome_scraper_profile
 sales_order_demand.json
 saved_products.json
-__pycache__/gw_order_tool.cpython-310.pyc
-__pycache__/neto_scraper.cpython-310.pyc
+__pycache__/
+*.pyc
 /build
 /dist/chrome_scraper_profile
-__pycache__/gw_order_tool.cpython-310.pyc
+.DS_Store
+.gitattributes
+chromedriver-win64/chromedriver.exe
+chromedriver-win64/LICENSE.chromedriver
+chromedriver-win64/THIRD_PARTY_NOTICES.chromedriver
+/chromedriver-win64
+/__pycache__

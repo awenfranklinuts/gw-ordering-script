@@ -96,13 +96,14 @@ def get_last_tuesday():
     return tuesday_last_week
 
 
-def build_sales_orders_url(from_date):
+def build_sales_orders_url(from_date, to_date=None):
     from_date_param = quote(from_date.strftime("%d/%m/%Y") + " 12:00am")
+    to_date_param = quote(to_date.strftime("%d/%m/%Y") + " 11:59pm") if to_date else ""
     return (
         "https://www.pcmarket.com.au/_cpanel/orders?"
         "_note_credit_card_warning=0"
         f"&_ftr_dp_fmdate={from_date_param}"
-        "&_ftr_dp_todate=&_ftr_id=&_ftr_cus=&_ftr_sku="
+        f"&_ftr_dp_todate={to_date_param}&_ftr_id=&_ftr_cus=&_ftr_sku="
         "&_ftr_da_fmdate=&_ftr_da_todate=&_ftr_di_fmdate=&_ftr_di_todate="
         "&_ftr_du_fmdate=&_ftr_du_todate=&_ftr_dc_fmdate=&_ftr_dc_todate="
         "&_ftr_dr_fmdate=&_ftr_dr_todate=&_ftr_dd_fmdate=&_ftr_dd_todate="
@@ -321,11 +322,20 @@ def parse_args():
         default=None,
         help="Date Placed From, in DD/MM/YYYY format (default: last Tuesday).",
     )
+    parser.add_argument(
+        "--to-date",
+        dest="to_date",
+        default=None,
+        help="Date Placed Till, in DD/MM/YYYY format (default: no upper bound).",
+    )
     return parser.parse_args()
 
 
-def run(from_date=None, on_progress=None):
+def run(from_date=None, to_date=None, on_progress=None):
     """Run the full Neto scrape and return the per-SKU demand summary.
+
+    to_date, if given, caps the Date Placed filter's upper end (inclusive, end of
+    day) — otherwise Neto returns orders up to now with no upper bound.
 
     on_progress, if given, is called with each progress line instead of print() —
     this is what lets the GUI import this module directly and call run() in a
@@ -352,9 +362,12 @@ def run(from_date=None, on_progress=None):
 
     driver = create_driver(profile_dir)
 
-    sales_url = build_sales_orders_url(resolved_from_date)
+    sales_url = build_sales_orders_url(resolved_from_date, to_date)
     date_note = "last Tuesday" if resolved_from_date == last_tue else "custom date"
-    emit(f"Filtering sales orders from: {resolved_from_date.strftime('%d/%m/%Y')} ({date_note})")
+    range_desc = f"{resolved_from_date.strftime('%d/%m/%Y')} ({date_note})"
+    if to_date:
+        range_desc += f" to {to_date.strftime('%d/%m/%Y')}"
+    emit(f"Filtering sales orders from: {range_desc}")
 
     emit("Loading Neto sales orders page...")
     driver.get(sales_url)
@@ -405,7 +418,15 @@ def main():
     else:
         from_date = last_tue
 
-    run(from_date=from_date, on_progress=print)
+    to_date = None
+    if args.to_date:
+        try:
+            to_date = datetime.strptime(args.to_date, "%d/%m/%Y").date()
+        except ValueError:
+            print(f"Invalid --to-date '{args.to_date}' (expected DD/MM/YYYY) — ignoring, no upper bound.")
+            to_date = None
+
+    run(from_date=from_date, to_date=to_date, on_progress=print)
 
 
 if __name__ == "__main__":
