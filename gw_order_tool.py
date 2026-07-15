@@ -2264,6 +2264,7 @@ class GWOrderTool:
             rows.append((
                 code,
                 self.tree.set(iid, "Product Name"),
+                self.tree.set(iid, self.SELLABLE_STOCK_HEADER),
                 self.tree.set(iid, self.PACKS_TO_ORDER_HEADER),
             ))
 
@@ -2299,7 +2300,7 @@ class GWOrderTool:
         self.tree = self._create_treeview(self.table_container)
         iids = self._populate_tree(
             self.tree,
-            ["Product Code", "Product Name", self.PACKS_TO_ORDER_HEADER],
+            ["Product Code", "Product Name", self.SELLABLE_STOCK_HEADER, self.PACKS_TO_ORDER_HEADER],
             rows,
         )
         self.main_row_iid = {
