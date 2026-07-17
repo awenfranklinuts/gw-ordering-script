@@ -1,0 +1,77 @@
+# Builds "GW Order Tool.exe" automatically in the cloud on a Windows machine —
+# no local Windows PC or Python setup needed.
+#
+# When it runs:
+#   - every push to main that touches the app code / build files
+#   - or manually: GitHub -> Actions -> "Build Windows exe" -> Run workflow
+#
+# Where to get the exe afterwards (either works):
+#   1. Releases page (easiest): https://github.com/awenfranklinuts/gw-ordering-script/releases/latest
+#      — always holds the newest build as "GW.Order.Tool.exe".
+#   2. Actions tab -> click the finished run -> download the "GW-Order-Tool" artifact (a zip).
+name: Build Windows exe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "gw_order_tool.py"
+      - "neto_scraper.py"
+      - "GW Order Tool.spec"
+      - "requirements.txt"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to update the "latest" release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: pyinstaller "GW Order Tool.spec" --noconfirm
+
+      - name: Verify the exe was produced
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/GW Order Tool.exe")) {
+            Write-Error "Build finished but dist/GW Order Tool.exe is missing."
+            exit 1
+          }
+          Get-Item "dist/GW Order Tool.exe" | Format-List Name, Length
+
+      - name: Upload exe as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GW-Order-Tool
+          path: dist/GW Order Tool.exe
+          if-no-files-found: error
+
+      - name: Publish/refresh the "latest" release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: GW Order Tool (latest build)
+          body: |
+            Newest automatic build of GW Order Tool.exe (from commit ${{ github.sha }}).
+
+            Download the exe below, copy it to any Windows PC with Google Chrome
+            installed, and keep it in a normal writable folder (not Program Files) —
+            it saves its data files next to itself. No Python or setup needed.
+          files: dist/GW Order Tool.exe
+          fail_on_unmatched_files: true
