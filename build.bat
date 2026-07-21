@@ -49,6 +49,12 @@ if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
 
 echo.
+echo Downloading a matching chromedriver to bundle into the exe ...
+echo (so the app doesn't need internet access to fetch one when run elsewhere)
+powershell -NoProfile -Command ^
+  "try { $json = Invoke-RestMethod -Uri 'https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json'; $stable = $json.channels.Stable; $url = ($stable.downloads.chromedriver | Where-Object { $_.platform -eq 'win64' }).url; Invoke-WebRequest -Uri $url -OutFile chromedriver.zip; Expand-Archive -Path chromedriver.zip -DestinationPath chromedriver_extract -Force; Copy-Item -Path 'chromedriver_extract\chromedriver-win64\chromedriver.exe' -Destination 'chromedriver.exe' -Force; Write-Host 'chromedriver.exe ready.' } catch { Write-Warning \"Could not download chromedriver ($_) - build will fall back to Selenium Manager at runtime.\" }"
+
+echo.
 echo Building GW Order Tool.exe ...
 pyinstaller "GW Order Tool.spec" --noconfirm
 if errorlevel 1 (

@@ -1,8 +1,10 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import WebDriverException
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
@@ -300,16 +302,84 @@ def aggregate_by_sku(order_lines):
     return result
 
 
-def create_driver(profile_dir=None):
+def _bundled_chromedriver_path():
+    """Path to the chromedriver.exe bundled into the frozen exe (see GW Order
+    Tool.spec / build.yml, which download one at build time and embed it as a
+    PyInstaller data file). In onefile mode PyInstaller re-extracts its data
+    files into a fresh sys._MEIPASS temp folder on every launch, so this is
+    recomputed each run rather than cached. Returns None when not frozen, or
+    when no bundled driver was included in this particular build."""
+    if not getattr(sys, "frozen", False):
+        return None
+    candidate = os.path.join(sys._MEIPASS, "chromedriver.exe")
+    return candidate if os.path.exists(candidate) else None
+
+
+def _clear_stale_singleton_lock(profile_dir):
+    """Remove Chromium's SingletonLock/-Cookie/-Socket files from the scraper's
+    persistent profile directory before launching, if present.
+
+    This app deliberately never calls driver.quit() (see run(), bottom) so the
+    user can leave the scraped orders open for review — which means if they
+    instead close the exe window, force-quit it, or their PC sleeps/reboots
+    while Chrome is still open, Chrome never gets a clean shutdown and can
+    leave these lock files behind. On the next run, Chrome sees the stale lock,
+    assumes another instance already owns this profile, and refuses to fully
+    start — surfacing to Selenium as "session not created: Chrome failed to
+    start: crashed (DevToolsActivePort file doesn't exist)" even though nothing
+    is actually still running. Safe to remove unconditionally on our own
+    dedicated profile dir: a real second instance using this same profile
+    would only happen if the user launched the tool twice at once."""
+    if not profile_dir or not os.path.isdir(profile_dir):
+        return
+    for name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+        path = os.path.join(profile_dir, name)
+        try:
+            if os.path.exists(path) or os.path.islink(path):
+                os.remove(path)
+        except OSError:
+            pass
+
+
+def create_driver(profile_dir=None, emit=_default_emit):
+    resolved_profile_dir = profile_dir or SCRAPER_PROFILE_DIR
+    _clear_stale_singleton_lock(resolved_profile_dir)
+
     chrome_options = Options()
-    chrome_options.add_argument(f"--user-data-dir={profile_dir or SCRAPER_PROFILE_DIR}")
+    chrome_options.add_argument(f"--user-data-dir={resolved_profile_dir}")
     chrome_options.add_argument("--profile-directory=Default")
     chrome_options.add_argument("--no-sandbox")
+    # Both recommended by Selenium/ChromeDriver for exactly the "session not
+    # created: Chrome failed to start: crashed (DevToolsActivePort file
+    # doesn't exist)" error seen on some machines: --disable-dev-shm-usage
+    # avoids Chrome crashing when the machine's shared-memory area is small or
+    # locked down (common under restrictive/managed Windows setups); --disable-gpu
+    # avoids crashes on machines with no/blocked GPU access (e.g. remote
+    # desktop sessions, some VMs, or locked-down corporate hardware).
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
 
-    # No executable_path/Service is passed here on purpose: Selenium Manager (built
-    # into Selenium 4.6+) auto-detects the installed Chrome and downloads a matching
-    # chromedriver itself. That's what lets this run on any device with Chrome
-    # installed, with no manual chromedriver setup or version-matching required.
+    # Prefer a chromedriver bundled straight into the exe so the app works on a
+    # machine with no/blocked internet access and doesn't depend on Selenium
+    # Manager being able to detect the installed Chrome version. This is what
+    # fixed "Unable to obtain driver for chrome" happening on other people's
+    # devices — Selenium Manager has to reach googlechromelabs.github.io at
+    # runtime to resolve/download a driver, which fails behind restrictive
+    # firewalls or on machines it can't fingerprint Chrome on.
+    #
+    # If the bundled driver is missing (e.g. a build run without the download
+    # step) or turns out to be the wrong major version for whatever Chrome is
+    # actually installed (raises WebDriverException, e.g. "session not
+    # created"), fall back to Selenium Manager's auto-download — same as
+    # before, so this never regresses machines where that already worked.
+    bundled_driver = _bundled_chromedriver_path()
+    if bundled_driver:
+        try:
+            service = Service(executable_path=bundled_driver)
+            return webdriver.Chrome(options=chrome_options, service=service)
+        except WebDriverException as e:
+            emit(f"Bundled chromedriver didn't work ({e}); falling back to Selenium Manager...")
+
     driver = webdriver.Chrome(options=chrome_options)
     return driver
 
@@ -360,7 +430,7 @@ def run(from_date=None, to_date=None, on_progress=None):
         emit("First run — please log in to Neto when the browser opens.")
         emit("Your session will be saved for future runs.")
 
-    driver = create_driver(profile_dir)
+    driver = create_driver(profile_dir, emit)
 
     sales_url = build_sales_orders_url(resolved_from_date, to_date)
     date_note = "last Tuesday" if resolved_from_date == last_tue else "custom date"

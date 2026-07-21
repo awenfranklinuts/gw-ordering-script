@@ -42,6 +42,29 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # Bundles a chromedriver matching current Chrome stable straight into the exe
+      # (see GW Order Tool.spec), so the app doesn't need network access or Chrome
+      # auto-detection at runtime to obtain a driver — that runtime dependency (via
+      # Selenium Manager) is what caused "Unable to obtain driver for chrome" on
+      # other people's machines. Non-fatal on failure: if this step can't reach the
+      # Chrome for Testing endpoint, the build just proceeds without a bundled
+      # driver and neto_scraper falls back to Selenium Manager, same as before.
+      - name: Download matching chromedriver (Chrome for Testing)
+        shell: pwsh
+        run: |
+          try {
+            $json = Invoke-RestMethod -Uri "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+            $stable = $json.channels.Stable
+            $driverUrl = ($stable.downloads.chromedriver | Where-Object { $_.platform -eq "win64" }).url
+            Write-Host "Chrome Stable $($stable.version) -> $driverUrl"
+            Invoke-WebRequest -Uri $driverUrl -OutFile chromedriver.zip
+            Expand-Archive -Path chromedriver.zip -DestinationPath chromedriver_extract -Force
+            Copy-Item -Path "chromedriver_extract\chromedriver-win64\chromedriver.exe" -Destination "chromedriver.exe" -Force
+            Write-Host "Bundled chromedriver.exe ready."
+          } catch {
+            Write-Warning "Could not download chromedriver ($_); build will fall back to Selenium Manager at runtime."
+          }
+
       - name: Build with PyInstaller
         run: pyinstaller "GW Order Tool.spec" --noconfirm
 
