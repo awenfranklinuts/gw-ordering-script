@@ -1,5 +1,7 @@
 /chrome_scraper_profile
+neto_config.json
 sales_order_demand.json
+sales_order_demand_api.json
 saved_products.json
 __pycache__/
 *.pyc

@@ -12,7 +12,7 @@ import os
 import threading
 from datetime import date, timedelta
 
-import neto_scraper
+import neto_api
 
 
 def _app_base_dir():
@@ -182,9 +182,9 @@ class GWOrderTool:
 
     @staticmethod
     def _get_last_tuesday():
-        """Mirrors neto_scraper.get_last_tuesday() — kept as a separate copy here so
+        """Mirrors neto_api.get_last_tuesday() — kept as a separate copy here so
         the date shown in the picker before Fetch Stock from Neto runs doesn't
-        require importing neto_scraper just for this one helper.
+        require importing neto_api just for this one helper.
         Tuesday of the week *before* the current one (weeks run Mon–Sun), e.g. run on
         Thursday 2/7 -> current week is Mon 29/6-Sun 5/7, so this returns 23/6."""
         today = date.today()
@@ -224,11 +224,9 @@ class GWOrderTool:
             font=("TkDefaultFont", 10, "bold"),
             foreground="#b45309",
         )
-        style.configure(
-            "NetoLoginWait.TLabel",
-            font=("TkDefaultFont", 10, "bold"),
-            foreground="#b91c1c",
-        )
+        # NetoLoginWait.TLabel used to mark the "waiting for you to log in to Neto"
+        # state. The API fetch has no interactive login, so that state no longer
+        # exists and the style has been removed with it.
         style.configure(
             "NetoDateSelected.TButton",
             font=("TkDefaultFont", 9, "bold"),
@@ -1986,7 +1984,7 @@ class GWOrderTool:
             f"Checking product barcodes on Neto (orders placed {date_range_desc}) — please wait..."
         )
 
-        thread = threading.Thread(target=self._run_neto_scraper, daemon=True)
+        thread = threading.Thread(target=self._run_neto_fetch, daemon=True)
         thread.start()
 
     def _set_neto_checking(self, active):
@@ -2003,66 +2001,38 @@ class GWOrderTool:
             self.neto_progress.pack_forget()
             self.status_label.config(style="TLabel")
 
-    def _set_neto_login_waiting(self, waiting, text):
-        """Distinct visual state for 'stopped and waiting on you to log in' vs. the normal
-        'actively checking Neto' state, so it's obvious action is needed on your end."""
-        if not self.status_label:
-            return
-        self.status_label.config(style="NetoLoginWait.TLabel" if waiting else "NetoChecking.TLabel")
-        self.status_var.set(text)
-
-    def _run_neto_scraper(self):
-        """Runs neto_scraper.run() in-process (this method already executes on a
+    def _run_neto_fetch(self):
+        """Runs neto_api.run() in-process (this method already executes on a
         background thread — see _on_fetch_neto) and forwards its progress lines to
-        the status bar, exactly like the old subprocess version did by reading
-        piped stdout. Importing and calling it directly, instead of launching
-        neto_scraper.py as a separate `sys.executable` subprocess, is required for
-        this to work in a frozen exe: once packaged, sys.executable points at the
-        GUI exe itself (not a Python interpreter), so that subprocess call would
-        just relaunch the GUI instead of running the scraper."""
-        login_prompt_shown = {"shown": False}
+        the status bar.
 
+        This used to drive neto_scraper, which opened a Chrome window and could
+        stall waiting for the user to log in — hence the old login-prompt handling
+        and the separate 'waiting for login' status style, both now gone. The API
+        authenticates with a key from neto_config.json, so there's no interactive
+        step and no browser: the fetch either completes or raises."""
         def emit(line):
             stripped = (line or "").strip()
-
-            if stripped.startswith(("Not logged in to Neto", "Please log in using the Chrome window")):
-                display = "Waiting for you to log in to Neto — a Chrome window is open for you to sign in."
-                self.root.after(0, lambda d=display: self._set_neto_login_waiting(True, d))
-                if not login_prompt_shown["shown"] and stripped.startswith("Not logged in to Neto"):
-                    login_prompt_shown["shown"] = True
-                    self.root.after(0, lambda: messagebox.showinfo(
-                        "Login Required",
-                        "You're not logged in to Neto yet.\n\n"
-                        "A Chrome window has opened — please log in there. This will "
-                        "continue automatically once it detects you're logged in.",
-                    ))
-            elif stripped.startswith("Still waiting for login"):
-                suffix = stripped.split("...", 1)[1].strip() if "..." in stripped else ""
-                display = f"Still waiting for you to log in to Neto... {suffix}".strip()
-                self.root.after(0, lambda d=display: self._set_neto_login_waiting(True, d))
-            elif stripped.startswith("Login detected"):
-                display = "Login detected — resuming stock check on Neto..."
-                self.root.after(0, lambda d=display: self._set_neto_login_waiting(False, d))
-            else:
-                display = f"Checking Neto: {stripped}" if stripped else "Checking product barcodes on Neto..."
-                self.root.after(0, lambda d=display: self.status_var.set(d))
+            display = f"Checking Neto: {stripped}" if stripped else "Checking product barcodes on Neto..."
+            self.root.after(0, lambda d=display: self.status_var.set(d))
 
         try:
             self.root.after(0, lambda: self.status_var.set("Checking product barcodes on Neto..."))
 
-            neto_scraper.run(from_date=self.neto_from_date, to_date=self.neto_to_date, on_progress=emit)
+            neto_api.run(from_date=self.neto_from_date, to_date=self.neto_to_date, on_progress=emit)
 
-            self.root.after(0, lambda: self.status_var.set("Neto scraper finished. Applying stock data..."))
+            self.root.after(0, lambda: self.status_var.set("Neto fetch finished. Applying stock data..."))
             self.root.after(0, self._load_and_apply_neto_stock_data)
 
         except RuntimeError as e:
-            # e.g. login timeout — a known, user-facing condition (see
-            # neto_scraper.ensure_logged_in), not an unexpected crash.
-            self.root.after(0, lambda: self.status_var.set(f"Neto scraper failed: {e}"))
-            self.root.after(0, lambda msg=str(e): messagebox.showerror("Neto Scraper Failed", msg))
+            # NetoAPIError subclasses RuntimeError: a missing/rejected API key or an
+            # Ack=Error response, all of which the user can act on. Shown as a
+            # dialog rather than treated as a crash.
+            self.root.after(0, lambda: self.status_var.set(f"Neto fetch failed: {e}"))
+            self.root.after(0, lambda msg=str(e): messagebox.showerror("Neto Fetch Failed", msg))
         except Exception as e:
             self.root.after(0, lambda: self.status_var.set(f"Error: {e}"))
-            self.root.after(0, lambda msg=str(e): messagebox.showerror("Neto Scraper Failed", msg))
+            self.root.after(0, lambda msg=str(e): messagebox.showerror("Neto Fetch Failed", msg))
 
         self.root.after(0, lambda: self.neto_btn.config(state="normal"))
         self.root.after(0, lambda: self._set_neto_checking(False))
