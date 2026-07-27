@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import openpyxl
+import pdfplumber
 import calendar
 import copy
 import json
@@ -176,6 +177,8 @@ class GWOrderTool:
         self.status_label = None
         self.neto_progress = None
         self.status_var = tk.StringVar()
+        self.conf_total_var = tk.StringVar()
+        self.qty_ordered_total_var = tk.StringVar()
 
     @staticmethod
     def _get_last_tuesday():
@@ -274,7 +277,7 @@ class GWOrderTool:
         self.order_pad_entry.grid(row=0, column=1, padx=5, pady=2)
         self.order_pad_browse_btn.grid(row=0, column=2, pady=2)
 
-        self.order_conf_label = ttk.Label(frame, text="Last Week's Order Confirmation (.xlsx):")
+        self.order_conf_label = ttk.Label(frame, text="Last Week's Order Confirmation (.xlsx or .pdf):")
         self.order_conf_entry = ttk.Entry(frame, textvariable=self.order_conf_path, width=80)
         self.order_conf_browse_btn = ttk.Button(frame, text="Browse...", command=self._browse_order_conf)
         self.order_conf_label.grid(row=1, column=0, sticky="w", pady=2)
@@ -787,7 +790,11 @@ class GWOrderTool:
     def _browse_order_conf(self):
         path = filedialog.askopenfilename(
             title="Select Order Confirmation",
-            filetypes=[("Excel files", "*.xlsx")],
+            filetypes=[
+                ("Order Confirmation files", "*.xlsx *.pdf"),
+                ("Excel files", "*.xlsx"),
+                ("PDF files", "*.pdf"),
+            ],
         )
         if path:
             self.order_conf_path.set(path)
@@ -877,28 +884,115 @@ class GWOrderTool:
 
     def _load_order_conf(self, path):
         try:
-            wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-            ws = wb["Table 1"]
+            if path.lower().endswith(".pdf"):
+                self.conf_qty_lookup, total = self._parse_order_conf_pdf(path)
+            else:
+                self.conf_qty_lookup = self._parse_order_conf_xlsx(path)
+                total = None  # xlsx export carries no order total
 
-            rows = list(ws.iter_rows(values_only=True))
-            wb.close()
-
-            self.conf_qty_lookup = {}
-            for row in rows[1:]:
-                if not row:
-                    continue
-                product_code = row[0]
-                if product_code is None:
-                    continue
-                qty_available = row[4] if len(row) > 4 else None
-                try:
-                    qty = int(qty_available) if qty_available is not None and str(qty_available).strip() != "" else 0
-                except (ValueError, TypeError):
-                    qty = 0
-                self.conf_qty_lookup[str(product_code)] = qty
-
+            self.conf_total_var.set(f"Confirmed Order Total: ${total:,.2f}" if total is not None else "")
+            if self.bottom_frame:
+                self._build_bottom_frame()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load Order Confirmation:\n{e}")
+
+    def _parse_order_conf_xlsx(self, path):
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        ws = wb["Table 1"]
+
+        rows = list(ws.iter_rows(values_only=True))
+        wb.close()
+
+        qty_lookup = {}
+        for row in rows[1:]:
+            if not row:
+                continue
+            product_code = row[0]
+            if product_code is None:
+                continue
+            qty_available = row[4] if len(row) > 4 else None
+            try:
+                qty = int(qty_available) if qty_available is not None and str(qty_available).strip() != "" else 0
+            except (ValueError, TypeError):
+                qty = 0
+            qty_lookup[str(product_code)] = qty
+
+        return qty_lookup
+
+    # Matches a GW invoice line, e.g.:
+    # "99120101465 S/M: Salamanders Upgrades & Transfers 55-16 1.00 ea 28.42 28.42 10%"
+    # Only invoiced (i.e. shipped/available) lines appear on an invoice, so the
+    # "Quantity" column here is equivalent to "Quantity Available" on an Order
+    # Confirmation.
+    _INVOICE_LINE_RE = re.compile(
+        r"^(?P<code>\d{8,12})\s+(?P<desc>.+?)\s+(?P<short>[A-Za-z0-9][A-Za-z0-9\-]*)\s+"
+        r"(?P<qty>[\d,]+\.\d{2})\s+(?P<uom>\S+)\s+(?P<price>[\d,]+\.\d{2})\s+"
+        r"(?P<amount>[\d,]+\.\d{2})\s+(?P<gst>\d+)%\s*$"
+    )
+
+    # Order Confirmation format: "Total : 9472.08" (colon-separated summary block).
+    _CONF_TOTAL_RE = re.compile(r"(?<![A-Za-z])Total\s*:\s*([\d,]+\.\d{2})")
+    # Tax Invoice format: "Invoice total 8,710.05" (no colon).
+    _INVOICE_TOTAL_RE = re.compile(r"Invoice\s+total\s+([\d,]+\.\d{2})", re.IGNORECASE)
+
+    def _parse_order_conf_pdf(self, path):
+        qty_lookup = {}
+        page_texts = []
+        with pdfplumber.open(path) as pdf:
+            for page in pdf.pages:
+                tables = page.extract_tables()
+                handled_via_table = False
+                for table in tables:
+                    if not table:
+                        continue
+                    header = [(cell or "").replace("\n", " ").strip().lower() for cell in table[0]]
+                    if not header or "product" not in header[0] or "code" not in header[0]:
+                        continue
+                    qty_idx = next((i for i, h in enumerate(header) if "available" in h), None)
+                    if qty_idx is None:
+                        continue
+                    handled_via_table = True
+                    for row in table[1:]:
+                        if not row or row[0] is None:
+                            continue
+                        product_code = str(row[0]).strip()
+                        if not product_code:
+                            continue
+                        qty_available = row[qty_idx] if qty_idx < len(row) else None
+                        try:
+                            qty = int(float(str(qty_available).replace(",", ""))) if qty_available not in (None, "") else 0
+                        except (ValueError, TypeError):
+                            qty = 0
+                        qty_lookup[product_code] = qty
+
+                text = page.extract_text() or ""
+                page_texts.append(text)
+
+                if handled_via_table:
+                    continue
+
+                # No ruling-line table on this page (e.g. Tax Invoice layout) —
+                # fall back to parsing each text line directly.
+                for line in text.split("\n"):
+                    m = self._INVOICE_LINE_RE.match(line.strip())
+                    if not m:
+                        continue
+                    try:
+                        qty = int(float(m.group("qty").replace(",", "")))
+                    except (ValueError, TypeError):
+                        qty = 0
+                    qty_lookup[m.group("code")] = qty
+
+        full_text = "\n".join(page_texts)
+        total = None
+        m = self._CONF_TOTAL_RE.search(full_text) or self._INVOICE_TOTAL_RE.search(full_text)
+        if m:
+            try:
+                total = float(m.group(1).replace(",", ""))
+            except ValueError:
+                total = None
+
+        return qty_lookup, total
 
     def _refresh_view(self):
         self._clear_undo_history()
@@ -930,6 +1024,9 @@ class GWOrderTool:
         }
         self.last_week_ordered_lookup = last_week_ordered_lookup
 
+        total_qty_ordered = sum(qty_ordered for _c, _p, qty_ordered, _cf, _o in merged)
+        self.qty_ordered_total_var.set(f"Total Qty Ordered: {total_qty_ordered:,}")
+
         self.status_var.set("Reconciled. Select this week's Order Pad to continue.")
         self._build_bottom_frame()
 
@@ -942,6 +1039,19 @@ class GWOrderTool:
 
         self.status_label = ttk.Label(self.bottom_frame, textvariable=self.status_var)
         self.status_label.pack(side="left")
+
+        # Confirmed order total pulled from the Order Confirmation PDF (Total, or
+        # Invoice total for the Tax Invoice format) — stays visible regardless of
+        # whatever transient message status_var shows. Blank/not packed when unknown
+        # (e.g. an .xlsx Order Confirmation, which carries no total).
+        self.conf_total_label = ttk.Label(self.bottom_frame, textvariable=self.conf_total_var)
+        if self.conf_total_var.get():
+            self.conf_total_label.pack(side="right")
+
+        # Packed after conf_total_label (side="right") so it lands just to its left.
+        self.qty_ordered_total_label = ttk.Label(self.bottom_frame, textvariable=self.qty_ordered_total_var)
+        if self.qty_ordered_total_var.get():
+            self.qty_ordered_total_label.pack(side="right", padx=(0, 12))
 
         # Indeterminate progress bar shown only while actively checking against Neto —
         # see _set_neto_checking(). Not packed until needed.

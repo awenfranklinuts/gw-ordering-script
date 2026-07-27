@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/awenfranklin/dev/gw-ordering-script log --oneline --all)",
+      "Bash(git -C /Users/awenfranklin/dev/gw-ordering-script log --diff-filter=A --name-only --all)",
+      "Bash(pip3 install *)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -c \"import gw_order_tool\")",
+      "Bash(awk 'NR<=427 && /    def /{line=NR; name=$0} END{}' /Users/awenfranklin/dev/gw-ordering-script/gw_order_tool.py)",
+      "Bash(awk -F: '$1<427')"
+    ]
+  }
+}

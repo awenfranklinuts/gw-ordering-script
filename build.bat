@@ -34,7 +34,7 @@ if errorlevel 1 (
 call .build_venv\Scripts\activate.bat
 
 echo.
-echo Installing build requirements (openpyxl, selenium, pyinstaller) ...
+echo Installing build requirements (openpyxl, pdfplumber, selenium, pyinstaller) ...
 python -m pip install --upgrade pip >nul
 pip install -r requirements.txt
 if errorlevel 1 (

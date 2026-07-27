@@ -14,6 +14,11 @@ binaries = []
 hiddenimports = ['neto_scraper']  # belt-and-suspenders; real import already covers this
 tmp_ret = collect_all('selenium')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+# pdfminer.six (used by pdfplumber) loads its CMap data files via package
+# resources at runtime, which PyInstaller's import analysis won't pick up on
+# its own — collect_all ships that data so PDF parsing works in the exe.
+tmp_ret = collect_all('pdfminer')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 # If a chromedriver.exe sits next to this spec (build.yml / build.bat download one
 # matching the current Chrome stable release before invoking pyinstaller), embed it
