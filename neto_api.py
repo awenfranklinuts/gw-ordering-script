@@ -492,6 +492,24 @@ def fetch_item_info(skus, credentials=None, emit=_default_emit):
     return info
 
 
+def fetch_stock_for_skus(skus, on_progress=None):
+    """Public helper: current stock for arbitrary SKUs -> {sku: (available, on_hand)}.
+
+    run() only reports SKUs that actually sold, so the GUI has no stock figure for
+    the (usually far larger) set of products with no orders this week. This looks up
+    any SKU on demand, which is what lets the Sellable Stock column be populated for
+    every row rather than only the ones with sales.
+
+    Returns the pair shape gw_order_tool's neto_stock_lookup already uses, so
+    results can be merged straight in. SKUs with no item record in Neto are simply
+    absent from the result rather than defaulted to zero — a missing product and one
+    genuinely out of stock are different things, and showing "0" for the former
+    would invite ordering against a SKU that no longer exists."""
+    emit = on_progress or _default_emit
+    info = fetch_item_info(skus, None, emit)
+    return {sku: (rec["available"], rec["on_hand"]) for sku, rec in info.items()}
+
+
 def filter_to_suppliers(order_lines, item_info, emit=_default_emit):
     """Keep only lines whose product belongs to one of SUPPLIERS.
 

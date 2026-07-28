@@ -1984,7 +1984,13 @@ class GWOrderTool:
             f"Checking product barcodes on Neto (orders placed {date_range_desc}) — please wait..."
         )
 
-        thread = threading.Thread(target=self._run_neto_fetch, daemon=True)
+        # Snapshot the table's product codes here, on the main thread. The worker
+        # needs them to look up stock for rows with no sales, and Tkinter widgets
+        # must not be touched from a background thread.
+        table_skus = sorted(self.main_row_iid.keys())
+
+        thread = threading.Thread(
+            target=self._run_neto_fetch, args=(table_skus,), daemon=True)
         thread.start()
 
     def _set_neto_checking(self, active):
@@ -2001,7 +2007,7 @@ class GWOrderTool:
             self.neto_progress.pack_forget()
             self.status_label.config(style="TLabel")
 
-    def _run_neto_fetch(self):
+    def _run_neto_fetch(self, table_skus=()):
         """Runs neto_api.run() in-process (this method already executes on a
         background thread — see _on_fetch_neto) and forwards its progress lines to
         the status bar.
@@ -2021,8 +2027,17 @@ class GWOrderTool:
 
             neto_api.run(from_date=self.neto_from_date, to_date=self.neto_to_date, on_progress=emit)
 
+            # Stock for every product in this week's table, not just the ones that
+            # sold. The demand data only covers SKUs with orders, so without this
+            # second lookup the Sellable Stock column stays blank on any row with
+            # no sales — which is most of them.
+            stock_lookup = {}
+            if table_skus:
+                emit(f"Looking up stock for {len(table_skus)} products in this week's table...")
+                stock_lookup = neto_api.fetch_stock_for_skus(table_skus, on_progress=emit)
+
             self.root.after(0, lambda: self.status_var.set("Neto fetch finished. Applying stock data..."))
-            self.root.after(0, self._load_and_apply_neto_stock_data)
+            self.root.after(0, lambda s=stock_lookup: self._load_and_apply_neto_stock_data(s))
 
         except RuntimeError as e:
             # NetoAPIError subclasses RuntimeError: a missing/rejected API key or an
@@ -2037,9 +2052,12 @@ class GWOrderTool:
         self.root.after(0, lambda: self.neto_btn.config(state="normal"))
         self.root.after(0, lambda: self._set_neto_checking(False))
 
-    def _load_and_apply_neto_stock_data(self):
-        """Runs on the main thread after the scraper exits successfully. Reads the demand
-        data it wrote out (one entry per SKU sold on Neto) and folds it into the table."""
+    def _load_and_apply_neto_stock_data(self, stock_lookup=None):
+        """Runs on the main thread after the fetch finishes. Reads the demand data it
+        wrote out (one entry per SKU sold on Neto) and folds it into the table.
+
+        stock_lookup is the separate {sku: (available, on_hand)} map covering every
+        product in the table, including those with no sales — see _run_neto_fetch."""
         json_path = os.path.join(self.script_dir, "sales_order_demand.json")
         try:
             with open(json_path, "r", encoding="utf-8") as f:
@@ -2047,12 +2065,12 @@ class GWOrderTool:
         except Exception as e:
             messagebox.showerror(
                 "Failed to Read Neto Data",
-                f"Neto scraper finished, but sales_order_demand.json couldn't be read:\n{e}",
+                f"The Neto fetch finished, but sales_order_demand.json couldn't be read:\n{e}",
             )
-            self.status_var.set("Neto scraper finished, but stock data couldn't be applied.")
+            self.status_var.set("Neto fetch finished, but stock data couldn't be applied.")
             return
 
-        self._apply_neto_stock_data(sku_summary)
+        self._apply_neto_stock_data(sku_summary, stock_lookup)
 
     @staticmethod
     def _cell_int(tree, iid, column):
@@ -2096,7 +2114,7 @@ class GWOrderTool:
             return f"{stock_available} ({stock_on_hand})"
         return str(stock_available)
 
-    def _apply_neto_stock_data(self, sku_summary):
+    def _apply_neto_stock_data(self, sku_summary, stock_lookup=None):
         """For every SKU sold on Neto since last Tuesday, show the qty sold in its own
         column for review, and fill Packs to Order. For individual products: if
         sellable stock has gone negative, Packs to Order clears that deficit alone
@@ -2189,6 +2207,76 @@ class GWOrderTool:
 
             updated += 1
 
+        # Remember stock for every product we looked up, whether or not it gets
+        # displayed — the pack-review recommendation below reads this lookup, and a
+        # product can need a recommendation without its stock being shown in the
+        # main table.
+        for sku, levels in (stock_lookup or {}).items():
+            self.neto_stock_lookup.setdefault(sku, levels)
+
+        # Fill Sellable Stock on rows that sold nothing this week but still carry a
+        # Qty Outstanding. Rows where BOTH Qty Outstanding and Qty Sold on Neto are
+        # zero are left blank on purpose: there's no decision to make on them, so a
+        # stock figure is just noise down an otherwise empty column.
+        #
+        # Purely informational either way — Packs to Order is deliberately not
+        # touched here, so knowing an unsold product's stock level doesn't change
+        # what gets ordered. SKUs absent from stock_lookup have no item record in
+        # Neto and stay blank rather than showing 0, which would misread as "out of
+        # stock" and invite ordering against a product that no longer exists.
+        stock_only_filled = 0
+        for sku, main_iid in self.main_row_iid.items():
+            if not self.tree.exists(main_iid):
+                continue
+            if str(self.tree.set(main_iid, self.SELLABLE_STOCK_HEADER)).strip():
+                continue  # already filled from the sales data above
+            if self._cell_int(self.tree, main_iid, "Qty Outstanding") <= 0:
+                continue  # nothing outstanding and nothing sold
+            levels = (stock_lookup or {}).get(sku)
+            if levels is None:
+                continue
+            stock_available, stock_on_hand = levels
+            self.tree.set(
+                main_iid, self.SELLABLE_STOCK_HEADER,
+                self._format_stock_display(stock_available, stock_on_hand),
+            )
+            stock_only_filled += 1
+
+        # Pack products carrying a Qty Outstanding but with no Neto sales this week
+        # also go to Pack Review. Above, only pack products that actually sold get
+        # pulled out, which left rows like "Air: Mephiston Red (24Ml)" — 1
+        # outstanding, 0 sold — sitting in the main table where the fallback below
+        # would order Packs to Order = 1. For a 6-to-a-pack paint that "1" is
+        # ambiguous (one bottle, or one pack?), which is exactly the judgement call
+        # Pack Review exists to surface. Iterates over a copy of main_row_iid since
+        # the loop deletes from it; rows moved by the sales loop are already gone
+        # from it, so nothing is added twice.
+        for sku, main_iid in list(self.main_row_iid.items()):
+            if not self.tree.exists(main_iid):
+                continue
+            qty_in_pack = self.qty_in_pack_lookup.get(sku, 1)
+            if not isinstance(qty_in_pack, int) or qty_in_pack <= 1:
+                continue
+            qty_outstanding = self._cell_int(self.tree, main_iid, "Qty Outstanding")
+            if qty_outstanding <= 0:
+                # Nothing outstanding and nothing sold — no reason to review it.
+                continue
+
+            stock_available, stock_on_hand = self.neto_stock_lookup.get(sku, (0, None))
+            pack_review_rows.append((
+                sku,
+                self.tree.set(main_iid, "Product Name"),
+                self.tree.set(main_iid, "Qty Outstanding"),
+                0,  # nothing sold on Neto
+                self._format_stock_display(stock_available, stock_on_hand),
+                qty_in_pack,
+                self._recommended_packs(stock_available, qty_in_pack, qty_outstanding, 0),
+            ))
+            self.tree.delete(main_iid)
+            if hasattr(self.tree, "gw_all_iids"):
+                self.tree.gw_all_iids = [i for i in self.tree.gw_all_iids if i != main_iid]
+            del self.main_row_iid[sku]
+
         # Rows with no Neto sales still reorder last week's shortfall: blank Packs
         # to Order + a Qty Outstanding becomes Packs to Order = Qty Outstanding.
         for main_iid in self.main_row_iid.values():
@@ -2207,6 +2295,8 @@ class GWOrderTool:
         self._set_pack_review_rows(pack_review_rows)
 
         status = f"Fetched stock from Neto — {updated} product(s) matched"
+        if stock_only_filled:
+            status += f", {stock_only_filled} stock-only (no sales)"
         if pack_review_rows:
             status += f", {len(pack_review_rows)} moved to Pack Review"
         if unmatched:
